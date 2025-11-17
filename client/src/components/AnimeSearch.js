@@ -1,16 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 function AnimeSearch() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   const navigate = useNavigate();
+  const abortControllerRef = useRef(null);
+  const debounceTimerRef = useRef(null);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const performSearch = useCallback(async (searchQuery) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      return;
+    }
+
+    // Abort previous request if exists
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller
+    abortControllerRef.current = new AbortController();
+    setIsSearching(true);
+
     try {
-      const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=10`);
+      const response = await fetch(
+        `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchQuery)}&limit=10`,
+        { signal: abortControllerRef.current.signal }
+      );
       const data = await response.json();
       if (data.data) {
         setResults(data.data.map(anime => ({
@@ -23,8 +53,33 @@ function AnimeSearch() {
         setResults([]);
       }
     } catch (error) {
-      setResults([]);
+      if (error.name !== 'AbortError') {
+        setResults([]);
+      }
+    } finally {
+      setIsSearching(false);
     }
+  }, []);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    performSearch(query);
+  };
+
+  // Debounced search on input change
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Set new timer for debounced search
+    debounceTimerRef.current = setTimeout(() => {
+      performSearch(value);
+    }, 500);
   };
 
   return (
@@ -36,16 +91,18 @@ function AnimeSearch() {
             className="form-control"
             placeholder="Cerca un anime..."
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={handleInputChange}
           />
         </div>
         <div className="col-auto">
-          <button type="submit" className="btn btn-primary">Cerca</button>
+          <button type="submit" className="btn btn-primary" disabled={isSearching}>
+            {isSearching ? 'Cercando...' : 'Cerca'}
+          </button>
         </div>
       </form>
       <div className="row">
-        {results.map((anime, idx) => (
-          <div key={idx} className="col-md-6 col-lg-4 mb-4">
+        {results.map((anime) => (
+          <div key={anime.id} className="col-md-6 col-lg-4 mb-4">
             <div className="card h-100 shadow-sm" style={{cursor: 'pointer'}} onClick={() => navigate(`/anime/${anime.id}`)}>
               {anime.image && (
                 <img src={anime.image} alt={anime.title} className="card-img-top" style={{objectFit: 'cover', height: '250px'}} />
