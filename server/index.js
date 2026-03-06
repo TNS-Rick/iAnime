@@ -2,6 +2,10 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
+const dotenv = require('dotenv');
+const { connectDB } = require('./db/connection');
+
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
@@ -9,6 +13,9 @@ const io = socketIo(server, { cors: { origin: '*' } });
 
 app.use(cors());
 app.use(express.json());
+
+// Connect to MongoDB
+connectDB();
 
 // Cache for geolocation and JustWatch results
 const geoCache = new Map();
