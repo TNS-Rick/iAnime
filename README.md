@@ -112,8 +112,8 @@ iAnime si distingue per l’integrazione multipiattaforma, l’esperienza social
 - **Node.js** – Runtime JavaScript lato server
 - **Express.js** – Framework backend veloce e leggero
 - **Socket.io** – Comunicazione in tempo reale
-- **MongoDB** – Database NoSQL per la gestione di utenti, post e preferenze
-- **Mongoose** – ODM per MongoDB
+- **MySQL** – Database relazionale per la gestione dei dati applicativi
+- **mysql2** – Driver MySQL per query SQL raw da Node.js
 
 #### API esterne:
 - **Jikan / Anilist / Kitsu** – Ricerca anime
