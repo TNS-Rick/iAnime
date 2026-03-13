@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { connectDB } = require('./db/connection');
+const { dataApiRouter } = require('./api/dataApi');
 
 dotenv.config();
 
@@ -14,8 +15,18 @@ const io = socketIo(server, { cors: { origin: '*' } });
 app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB
+// Connect to MySQL
 connectDB();
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'iAnime API',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.use('/api', dataApiRouter);
 
 // Cache for geolocation and JustWatch results
 const geoCache = new Map();
@@ -82,6 +93,14 @@ app.get('/api/justwatch', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: 'Errore JustWatch', details: err.message });
   }
+});
+
+app.use((error, req, res, next) => {
+  console.error('API error:', error);
+  res.status(500).json({
+    error: 'Errore interno del server',
+    details: error.message,
+  });
 });
 
 // Socket.io base

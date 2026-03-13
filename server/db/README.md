@@ -1,10 +1,10 @@
-# iAnime Database - MongoDB
+# iAnime Database - MySQL
 
 ## Struttura Database
 
-Il database iAnime è costruito con MongoDB e utilizza Mongoose ODM per la gestione degli schemi e delle relazioni.
+Il database iAnime è costruito con MySQL e utilizza query SQL raw tramite `mysql2` per la creazione dello schema, il seed e l'accesso ai dati.
 
-### Collezioni Principali
+### Tabelle Principali
 
 #### 1. **Users** (Utenti)
 Schema completo per la gestione degli utenti con:
@@ -80,8 +80,13 @@ Relazioni tra utenti:
 
 ## Setup e Utilizzo
 
+## API intermedia backend-database
+- L'accesso ai dati passa attraverso endpoint REST sotto `/api/v1/*`
+- La documentazione completa è disponibile in [server/API_ENDPOINTS.md](../API_ENDPOINTS.md)
+- La documentazione JSON runtime è disponibile in `/api/docs`
+
 ### Prerequisiti
-- MongoDB installato e in esecuzione localmente
+- MySQL installato e in esecuzione localmente
 - Node.js installato
 
 ### Installazione
@@ -93,7 +98,11 @@ npm install
 ### Configurazione
 Crea un file `.env` nella directory server:
 ```env
-DATABASE_URL=mongodb://localhost:27017/ianime
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=ianime
+DB_USER=root
+DB_PASSWORD=
 JWT_SECRET=your_jwt_secret_key_change_this
 IPINFO_TOKEN=demo
 JUSTWATCH_API_KEY=your_justwatch_api_key
@@ -119,17 +128,17 @@ Questo creerà:
 npm start
 ```
 
-Il server si connetterà automaticamente a MongoDB all'avvio.
+Il server creerà il database se non esiste e si connetterà automaticamente a MySQL all'avvio.
 
 ## Convenzioni
 
 ### Timestamps
-- Tutti i documenti hanno `createdAt` e `updatedAt` (ISO 8601, UTC)
-- `updatedAt` viene aggiornato automaticamente tramite pre-save hook
+- Le tabelle MySQL usano `createdAt` e `updatedAt` (ISO 8601, UTC)
+- `updatedAt` viene aggiornato automaticamente da MySQL tramite `ON UPDATE CURRENT_TIMESTAMP`
 
 ### Soft Deletes
 - Tutti i modelli hanno campo `deletedAt`
-- Non cancellare documenti direttamente, impostare `deletedAt` per audit trail
+- Non cancellare record direttamente, impostare `deletedAt` per audit trail
 
 ### Case Sensitivity
 - Username: case-insensitive, univoco

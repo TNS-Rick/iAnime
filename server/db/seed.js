@@ -1,262 +1,278 @@
-const mongoose = require('mongoose');
-const { connectDB, disconnectDB } = require('./connection');
-const {
-  User,
-  Anime,
-  Community,
-  Role,
-  Channel,
-  ChannelGroup,
-  Message,
-  DirectMessage,
-  Friendship,
-} = require('../models');
+const bcrypt = require('bcryptjs');
+const { connectDB, disconnectDB, getPool, resetDatabase } = require('./connection');
+
+const toJson = (value) => JSON.stringify(value);
+const hashPassword = (value) => bcrypt.hash(value, 10);
 
 const seedDB = async () => {
+  let connection;
+
   try {
     await connectDB();
-
-    // Clear all collections
-    console.log('🗑️  Pulizia database...');
-    await Promise.all([
-      User.deleteMany({}),
-      Anime.deleteMany({}),
-      Community.deleteMany({}),
-      Role.deleteMany({}),
-      Channel.deleteMany({}),
-      ChannelGroup.deleteMany({}),
-      Message.deleteMany({}),
-      DirectMessage.deleteMany({}),
-      Friendship.deleteMany({}),
-    ]);
+    console.log('🗑️  Ricreazione schema MySQL...');
+    await resetDatabase();
 
     console.log('🌱 Inizio seed del database...');
 
-    // Create sample users
-    const user1 = await User.create({
-      email: 'naruto@ianime.com',
-      password: 'password123',
-      username: 'naruto_fan',
-      bio: 'Amante di Naruto e azione!',
-      profileImage: 'https://via.placeholder.com/150',
-      displayNameColor: '#FF6B6B',
-      isPremium: true,
-      premiumExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-      twoFAEnabled: false,
-      whoCanInvite: 'all',
-      acceptStrangerMessages: true,
+    connection = await getPool().getConnection();
+    await connection.beginTransaction();
+
+    const defaultNotifications = toJson({
+      mention: true,
+      friendRequest: true,
+      systemNotifications: true,
+      communityList: [],
+      limitedPeople: [],
     });
 
-    const user2 = await User.create({
-      email: 'zenitsu@ianime.com',
-      password: 'password123',
-      username: 'demon_slayer_fan',
-      bio: 'Demon Slayer rulz!',
-      profileImage: 'https://via.placeholder.com/150',
-      isPremium: false,
-      twoFAEnabled: false,
-      whoCanInvite: 'friends',
-      acceptStrangerMessages: false,
-    });
+    const password1 = await hashPassword('password123');
+    const password2 = await hashPassword('password123');
+    const password3 = await hashPassword('password123');
 
-    const user3 = await User.create({
-      email: 'tanjiro@ianime.com',
-      password: 'password123',
-      username: 'tanjiro_sama',
-      bio: 'On a journey to save Nezuko',
-      profileImage: 'https://via.placeholder.com/150',
-      isPremium: false,
-      twoFAEnabled: true,
-      twoFAMethod: 'app',
-      whoCanInvite: 'friends',
-      acceptStrangerMessages: false,
-    });
+    const [user1Result] = await connection.execute(
+      `INSERT INTO users (
+        email, password, username, bio, profileImage, displayNameColor, isPremium,
+        premiumExpiresAt, notifications, twoFAEnabled, whoCanInvite,
+        acceptStrangerMessages, friendsList, blockedUsers, communities
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'naruto@ianime.com',
+        password1,
+        'naruto_fan',
+        'Amante di Naruto e azione!',
+        'https://via.placeholder.com/150',
+        '#FF6B6B',
+        1,
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        defaultNotifications,
+        0,
+        'all',
+        1,
+        toJson([]),
+        toJson([]),
+        toJson([]),
+      ]
+    );
+    const user1Id = user1Result.insertId;
+
+    const [user2Result] = await connection.execute(
+      `INSERT INTO users (
+        email, password, username, bio, profileImage, notifications, isPremium,
+        twoFAEnabled, whoCanInvite, acceptStrangerMessages, friendsList, blockedUsers, communities
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'zenitsu@ianime.com',
+        password2,
+        'demon_slayer_fan',
+        'Demon Slayer rulz!',
+        'https://via.placeholder.com/150',
+        defaultNotifications,
+        0,
+        0,
+        'friends',
+        0,
+        toJson([]),
+        toJson([]),
+        toJson([]),
+      ]
+    );
+    const user2Id = user2Result.insertId;
+
+    const [user3Result] = await connection.execute(
+      `INSERT INTO users (
+        email, password, username, bio, profileImage, notifications, isPremium,
+        twoFAEnabled, twoFAMethod, whoCanInvite, acceptStrangerMessages,
+        friendsList, blockedUsers, communities
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'tanjiro@ianime.com',
+        password3,
+        'tanjiro_sama',
+        'On a journey to save Nezuko',
+        'https://via.placeholder.com/150',
+        defaultNotifications,
+        0,
+        1,
+        'app',
+        'friends',
+        0,
+        toJson([]),
+        toJson([]),
+        toJson([]),
+      ]
+    );
+    const user3Id = user3Result.insertId;
 
     console.log('✅ Utenti creati');
 
-    // Create sample animes
-    const anime1 = await Anime.create({
-      title: 'Naruto Shippuden',
-      description: 'L\'epica storia di Naruto continua...',
-      coverImage: 'https://via.placeholder.com/300x400',
-      rating: 8.5,
-      category: 'Action, Shounen, Ninja',
-      status: 'completed',
-      jikanId: 1735,
-      platforms: [
-        { name: 'Crunchyroll', url: 'https://crunchyroll.com', country: 'IT', type: 'subscription' },
-        { name: 'Netflix', url: 'https://netflix.com', country: 'IT', type: 'subscription' },
-      ],
-      hashtags: ['#naruto', '#shippuden', '#anime'],
-      followedByCount: 15000,
-    });
+    await connection.execute(
+      `INSERT INTO animes (
+        title, description, coverImage, rating, category, status, jikanId, platforms, hashtags, followedByCount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'Naruto Shippuden',
+        'L\'epica storia di Naruto continua...',
+        'https://via.placeholder.com/300x400',
+        8.5,
+        'Action, Shounen, Ninja',
+        'completed',
+        1735,
+        toJson([
+          { name: 'Crunchyroll', url: 'https://crunchyroll.com', country: 'IT', type: 'subscription' },
+          { name: 'Netflix', url: 'https://netflix.com', country: 'IT', type: 'subscription' },
+        ]),
+        toJson(['#naruto', '#shippuden', '#anime']),
+        15000,
+      ]
+    );
 
-    const anime2 = await Anime.create({
-      title: 'Demon Slayer',
-      description: 'Tanjiro affronta il mondo dei demoni',
-      coverImage: 'https://via.placeholder.com/300x400',
-      rating: 9.0,
-      category: 'Action, Shounen, Supernatural',
-      status: 'ongoing',
-      jikanId: 38000,
-      platforms: [
-        { name: 'Crunchyroll', url: 'https://crunchyroll.com', country: 'IT', type: 'subscription' },
-      ],
-      hashtags: ['#demon-slayer', '#kimetsu', '#anime'],
-      followedByCount: 20000,
-    });
+    await connection.execute(
+      `INSERT INTO animes (
+        title, description, coverImage, rating, category, status, jikanId, platforms, hashtags, followedByCount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'Demon Slayer',
+        'Tanjiro affronta il mondo dei demoni',
+        'https://via.placeholder.com/300x400',
+        9.0,
+        'Action, Shounen, Supernatural',
+        'ongoing',
+        38000,
+        toJson([{ name: 'Crunchyroll', url: 'https://crunchyroll.com', country: 'IT', type: 'subscription' }]),
+        toJson(['#demon-slayer', '#kimetsu', '#anime']),
+        20000,
+      ]
+    );
 
-    const anime3 = await Anime.create({
-      title: 'Jujutsu Kaisen',
-      description: 'Yuji diventa il recipiente di un potente demone',
-      coverImage: 'https://via.placeholder.com/300x400',
-      rating: 8.8,
-      category: 'Action, Shounen, Supernatural',
-      status: 'ongoing',
-      jikanId: 40748,
-      platforms: [
-        { name: 'Crunchyroll', url: 'https://crunchyroll.com', country: 'IT', type: 'subscription' },
-      ],
-      hashtags: ['#jujutsu-kaisen', '#anime'],
-      followedByCount: 18000,
-    });
+    await connection.execute(
+      `INSERT INTO animes (
+        title, description, coverImage, rating, category, status, jikanId, platforms, hashtags, followedByCount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'Jujutsu Kaisen',
+        'Yuji diventa il recipiente di un potente demone',
+        'https://via.placeholder.com/300x400',
+        8.8,
+        'Action, Shounen, Supernatural',
+        'ongoing',
+        40748,
+        toJson([{ name: 'Crunchyroll', url: 'https://crunchyroll.com', country: 'IT', type: 'subscription' }]),
+        toJson(['#jujutsu-kaisen', '#anime']),
+        18000,
+      ]
+    );
 
     console.log('✅ Anime creati');
 
-    // Create roles
-    const adminRole = await Role.create({
-      name: 'Admin',
-      permissions: ['kick', 'deleteMsg', 'mute', 'manageRoles', 'manageChannels', 'pinMessages'],
-      color: '#FF0000',
-      members: [user1._id],
-    });
+    const [adminRoleResult] = await connection.execute(
+      'INSERT INTO roles (name, permissions, color, members) VALUES (?, ?, ?, ?)',
+      ['Admin', toJson(['kick', 'deleteMsg', 'mute', 'manageRoles', 'manageChannels', 'pinMessages']), '#FF0000', toJson([user1Id])]
+    );
+    const adminRoleId = adminRoleResult.insertId;
 
-    const moderatorRole = await Role.create({
-      name: 'Moderator',
-      permissions: ['deleteMsg', 'mute', 'pinMessages'],
-      color: '#FFA500',
-      members: [user2._id],
-    });
+    const [moderatorRoleResult] = await connection.execute(
+      'INSERT INTO roles (name, permissions, color, members) VALUES (?, ?, ?, ?)',
+      ['Moderator', toJson(['deleteMsg', 'mute', 'pinMessages']), '#FFA500', toJson([user2Id])]
+    );
+    const moderatorRoleId = moderatorRoleResult.insertId;
 
-    const memberRole = await Role.create({
-      name: 'Member',
-      permissions: [],
-      color: '#0000FF',
-      members: [user3._id],
-    });
+    const [memberRoleResult] = await connection.execute(
+      'INSERT INTO roles (name, permissions, color, members) VALUES (?, ?, ?, ?)',
+      ['Member', toJson([]), '#0000FF', toJson([user3Id])]
+    );
+    const memberRoleId = memberRoleResult.insertId;
 
     console.log('✅ Ruoli creati');
 
-    // Create channels
-    const generalChannel = await Channel.create({
-      name: 'general',
-      type: 'text',
-      hashtags: ['#naruto', '#discussion'],
-      maxMembers: 100,
-      permissions: [
-        { roleId: adminRole._id, canRead: true, canWrite: true },
-        { roleId: moderatorRole._id, canRead: true, canWrite: true },
-        { roleId: memberRole._id, canRead: true, canWrite: true },
-      ],
-      members: [user1._id, user2._id, user3._id],
-    });
+    const channelPermissions = toJson([
+      { roleId: adminRoleId, canRead: true, canWrite: true },
+      { roleId: moderatorRoleId, canRead: true, canWrite: true },
+      { roleId: memberRoleId, canRead: true, canWrite: true },
+    ]);
 
-    const voiceChannel = await Channel.create({
-      name: 'voice-chat',
-      type: 'voice',
-      maxMembers: 10,
-      permissions: [
-        { roleId: adminRole._id, canRead: true, canWrite: true },
-        { roleId: moderatorRole._id, canRead: true, canWrite: true },
-        { roleId: memberRole._id, canRead: true, canWrite: true },
-      ],
-      members: [user1._id, user2._id],
-    });
+    const [generalChannelResult] = await connection.execute(
+      'INSERT INTO channels (name, type, hashtags, maxMembers, permissions, messages, members) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['general', 'text', toJson(['#naruto', '#discussion']), 100, channelPermissions, toJson([]), toJson([user1Id, user2Id, user3Id])]
+    );
+    const generalChannelId = generalChannelResult.insertId;
 
-    const artChannel = await Channel.create({
-      name: 'fan-art',
-      type: 'text',
-      hashtags: ['#art', '#fanart'],
-      permissions: [
-        { roleId: adminRole._id, canRead: true, canWrite: true },
-        { roleId: moderatorRole._id, canRead: true, canWrite: true },
-        { roleId: memberRole._id, canRead: true, canWrite: true },
-      ],
-      members: [user1._id, user3._id],
-    });
+    const [voiceChannelResult] = await connection.execute(
+      'INSERT INTO channels (name, type, hashtags, maxMembers, permissions, messages, members) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['voice-chat', 'voice', toJson([]), 10, channelPermissions, toJson([]), toJson([user1Id, user2Id])]
+    );
+    const voiceChannelId = voiceChannelResult.insertId;
+
+    const [artChannelResult] = await connection.execute(
+      'INSERT INTO channels (name, type, hashtags, maxMembers, permissions, messages, members) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['fan-art', 'text', toJson(['#art', '#fanart']), 10, channelPermissions, toJson([]), toJson([user1Id, user3Id])]
+    );
+    const artChannelId = artChannelResult.insertId;
 
     console.log('✅ Canali creati');
 
-    // Create channel group
-    const textChannelGroup = await ChannelGroup.create({
-      name: 'Text Channels',
-      channels: [generalChannel._id, artChannel._id],
-    });
+    const [textChannelGroupResult] = await connection.execute(
+      'INSERT INTO channel_groups (name, channels) VALUES (?, ?)',
+      ['Text Channels', toJson([generalChannelId, artChannelId])]
+    );
+    const textChannelGroupId = textChannelGroupResult.insertId;
 
-    const voiceChannelGroup = await ChannelGroup.create({
-      name: 'Voice Channels',
-      channels: [voiceChannel._id],
-    });
+    const [voiceChannelGroupResult] = await connection.execute(
+      'INSERT INTO channel_groups (name, channels) VALUES (?, ?)',
+      ['Voice Channels', toJson([voiceChannelId])]
+    );
+    const voiceChannelGroupId = voiceChannelGroupResult.insertId;
 
     console.log('✅ Gruppi di canali creati');
 
-    // Create community
-    const narutoComm = await Community.create({
-      name: 'Naruto Central',
-      description: 'La comunità ufficiale per i fan di Naruto!',
-      adminId: user1._id,
-      roles: [adminRole._id, moderatorRole._id, memberRole._id],
-      categories: ['naruto', 'shippuden'],
-      channelGroups: [textChannelGroup._id, voiceChannelGroup._id],
-      members: [user1._id, user2._id, user3._id],
-    });
+    const [communityResult] = await connection.execute(
+      `INSERT INTO communities (
+        name, description, adminId, roles, categories, channelGroups, members, pinnedMessages
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'Naruto Central',
+        'La comunità ufficiale per i fan di Naruto!',
+        user1Id,
+        toJson([adminRoleId, moderatorRoleId, memberRoleId]),
+        toJson(['naruto', 'shippuden']),
+        toJson([textChannelGroupId, voiceChannelGroupId]),
+        toJson([user1Id, user2Id, user3Id]),
+        toJson([]),
+      ]
+    );
+    const narutoCommunityId = communityResult.insertId;
 
     console.log('✅ Comunità creata');
 
-    // Create sample messages
-    const msg1 = await Message.create({
-      content: 'Benvenuti nella comunità di Naruto! 🎉',
-      authorId: user1._id,
-      channelId: generalChannel._id,
-      mentions: [],
-    });
+    const [msg1Result] = await connection.execute(
+      'INSERT INTO messages (content, authorId, channelId, reactions, mentions) VALUES (?, ?, ?, ?, ?)',
+      ['Benvenuti nella comunità di Naruto! 🎉', user1Id, generalChannelId, toJson([]), toJson([])]
+    );
+    const msg1Id = msg1Result.insertId;
 
-    const msg2 = await Message.create({
-      content: 'Mi piace tantissimo questo anime!',
-      authorId: user2._id,
-      channelId: generalChannel._id,
-      mentions: [user1._id],
-    });
+    const [msg2Result] = await connection.execute(
+      'INSERT INTO messages (content, authorId, channelId, reactions, mentions) VALUES (?, ?, ?, ?, ?)',
+      ['Mi piace tantissimo questo anime!', user2Id, generalChannelId, toJson([]), toJson([user1Id])]
+    );
+    const msg2Id = msg2Result.insertId;
 
-    // Update channel with messages
-    await Channel.findByIdAndUpdate(generalChannel._id, {
-      $push: { messages: [msg1._id, msg2._id] },
-    });
+    await connection.execute('UPDATE channels SET messages = ? WHERE id = ?', [toJson([msg1Id, msg2Id]), generalChannelId]);
+    await connection.execute('UPDATE communities SET pinnedMessages = ? WHERE id = ?', [toJson([msg1Id]), narutoCommunityId]);
+    await connection.execute('UPDATE users SET communities = ?, friendsList = ? WHERE id = ?', [toJson([narutoCommunityId]), toJson([user2Id]), user1Id]);
+    await connection.execute('UPDATE users SET communities = ?, friendsList = ? WHERE id = ?', [toJson([narutoCommunityId]), toJson([user1Id]), user2Id]);
+    await connection.execute('UPDATE users SET communities = ? WHERE id = ?', [toJson([narutoCommunityId]), user3Id]);
 
     console.log('✅ Messaggi creati');
 
-    // Create friendships
-    const friendship1 = await Friendship.create({
-      requester: user1._id,
-      recipient: user2._id,
-      status: 'accepted',
-    });
-
-    const friendship2 = await Friendship.create({
-      requester: user1._id,
-      recipient: user3._id,
-      status: 'pending',
-    });
+    await connection.execute('INSERT INTO friendships (requester, recipient, status) VALUES (?, ?, ?)', [user1Id, user2Id, 'accepted']);
+    await connection.execute('INSERT INTO friendships (requester, recipient, status) VALUES (?, ?, ?)', [user1Id, user3Id, 'pending']);
 
     console.log('✅ Amicizie create');
 
-    // Create direct message session
-    const dmSession = await DirectMessage.create({
-      participants: [user1._id, user2._id],
-      messages: [],
-    });
+    await connection.execute('INSERT INTO direct_messages (participants, messages) VALUES (?, ?)', [toJson([user1Id, user2Id]), toJson([])]);
 
     console.log('✅ Sessione DM creata');
+
+    await connection.commit();
 
     console.log('✨ Database seed completato con successo!');
     console.log(`
@@ -269,9 +285,16 @@ const seedDB = async () => {
   - Amicizie: 2
     `);
 
+    connection.release();
     await disconnectDB();
   } catch (error) {
     console.error('❌ Errore seed database:', error);
+
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
+
     await disconnectDB();
     process.exit(1);
   }
