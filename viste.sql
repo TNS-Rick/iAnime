@@ -5,34 +5,44 @@
 -- Sezione dedicata al reset completo dello schema prima del seed.
 -- Separatore visivo della prima sezione del file.
 
--- Disabilita temporaneamente i vincoli di chiave esterna per permettere i DROP in cascata logica.
+-- Query per disabilitare temporaneamente i vincoli di chiave esterna.
 SET FOREIGN_KEY_CHECKS = 0;
--- Elimina la tabella delle amicizie se esiste già.
+
+-- Query per eliminare la tabella delle amicizie se esiste già.
 DROP TABLE IF EXISTS friendships;
--- Elimina la tabella dei messaggi se esiste già.
+
+-- Query per eliminare la tabella dei messaggi se esiste già.
 DROP TABLE IF EXISTS messages;
--- Elimina la tabella delle chat dirette se esiste già.
+
+-- Query per eliminare la tabella delle chat dirette se esiste già.
 DROP TABLE IF EXISTS direct_messages;
--- Elimina la tabella delle community se esiste già.
+
+-- Query per eliminare la tabella delle community se esiste già.
 DROP TABLE IF EXISTS communities;
--- Elimina la tabella dei gruppi di canali se esiste già.
+
+-- Query per eliminare la tabella dei gruppi di canali se esiste già.
 DROP TABLE IF EXISTS channel_groups;
--- Elimina la tabella dei canali se esiste già.
+
+-- Query per eliminare la tabella dei canali se esiste già.
 DROP TABLE IF EXISTS channels;
--- Elimina la tabella dei ruoli se esiste già.
+
+-- Query per eliminare la tabella dei ruoli se esiste già.
 DROP TABLE IF EXISTS roles;
--- Elimina la tabella degli anime se esiste già.
+
+-- Query per eliminare la tabella degli anime se esiste già.
 DROP TABLE IF EXISTS animes;
--- Elimina la tabella degli utenti se esiste già.
+
+-- Query per eliminare la tabella degli utenti se esiste già.
 DROP TABLE IF EXISTS users;
--- Riabilita i controlli sulle chiavi esterne dopo il reset.
+
+-- Query per riabilitare i controlli sulle chiavi esterne dopo il reset.
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- Separatore visivo della seconda sezione del file.
 -- Sezione dedicata alla creazione dello schema applicativo.
 -- Separatore visivo della seconda sezione del file.
 
--- Crea la tabella `users` se non è già presente.
+-- Query per creare la tabella `users` se non è già presente.
 CREATE TABLE IF NOT EXISTS users (
   -- Identificatore numerico univoco dell'utente, incrementato automaticamente.
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
