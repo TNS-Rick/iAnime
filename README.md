@@ -124,3 +124,45 @@ iAnime si distingue per l’integrazione multipiattaforma, l’esperienza social
 [text](https://ianime.lovable.app)
 
 ### 📂 Struttura Progetto (Base)
+
+### 🚀 Avvio del Progetto
+
+#### Avvio del Server
+1. Spostarsi nella directory del server:
+   ```bash
+   cd server
+   ```
+2. Installare le dipendenze:
+   ```bash
+   npm install
+   ```
+3. Avviare il server:
+   ```bash
+   npm start
+   ```
+   Il server sarà disponibile su `http://localhost:5000`.
+
+#### Avvio del Client
+1. Spostarsi nella directory del client:
+   ```bash
+   cd client
+   ```
+2. Installare le dipendenze:
+   ```bash
+   npm install
+   ```
+3. Avviare il client:
+   ```bash
+   npm start
+   ```
+   L'applicazione sarà disponibile su `http://localhost:3000`.
+
+### 📂 File Rilevanti
+
+#### API di tramite tra il database e il backend
+Il codice delle API di tramite tra il database e il backend si trova in:
+- `server/api/dataApi.js`
+
+#### Gestione dei permessi tramite JWT
+Il file che gestisce i permessi tramite JWT si trova in:
+- `server/api/auth.js`
