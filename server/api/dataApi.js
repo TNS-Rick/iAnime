@@ -618,6 +618,77 @@ router.post('/v1/communities/:id/members/:memberId/kick', authenticateToken, asy
   }
 });
 
+// Aggiunta di endpoint per la gestione delle community
+
+// Recupera tutti i membri di una community
+router.get('/v1/communities/:id/members', authenticateToken, async (req, res, next) => {
+  try {
+    const communityId = req.params.id;
+    const community = await getCommunityById(communityId);
+
+    if (!community) {
+      return res.status(404).json({ error: 'Community non trovata' });
+    }
+
+    const members = ensureArray(community.members);
+    const [rows] = await execute(
+      `SELECT id, username, profileImage FROM users WHERE id IN (?) AND deletedAt IS NULL`,
+      [members]
+    );
+
+    res.json({ members: rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Aggiungi un membro a una community
+router.post('/v1/communities/:id/members', authenticateToken, async (req, res, next) => {
+  try {
+    const communityId = req.params.id;
+    const { userId } = req.body;
+
+    const { community, allowed } = await canManageCommunity(communityId, req.user.id);
+
+    if (!allowed) {
+      return res.status(403).json({ error: 'Permessi insufficienti per aggiungere membri' });
+    }
+
+    const members = ensureArray(community.members);
+    if (members.includes(userId)) {
+      return res.status(400).json({ error: 'Utente già membro della community' });
+    }
+
+    members.push(userId);
+    await execute('UPDATE communities SET members = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(members), communityId]);
+
+    res.status(201).json({ message: 'Membro aggiunto con successo' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Rimuovi un membro da una community
+router.delete('/v1/communities/:id/members/:memberId', authenticateToken, async (req, res, next) => {
+  try {
+    const communityId = req.params.id;
+    const memberId = Number(req.params.memberId);
+
+    const { community, allowed } = await canManageCommunity(communityId, req.user.id);
+
+    if (!allowed) {
+      return res.status(403).json({ error: 'Permessi insufficienti per rimuovere membri' });
+    }
+
+    const members = ensureArray(community.members).filter((id) => id !== memberId);
+    await execute('UPDATE communities SET members = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(members), communityId]);
+
+    res.status(200).json({ message: 'Membro rimosso con successo' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 for (const resource of resources) {
   router.get(`/v1/${resource.name}`, async (req, res, next) => {
     try {
