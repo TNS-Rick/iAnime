@@ -86,7 +86,7 @@ Relazioni tra utenti:
 - La documentazione JSON runtime è disponibile in `/api/docs`
 
 ### Prerequisiti
-- MySQL installato e in esecuzione localmente
+- XAMPP installato (con modulo MySQL/MariaDB attivo)
 - Node.js installato
 
 ### Installazione
@@ -109,6 +109,15 @@ JUSTWATCH_API_KEY=your_justwatch_api_key
 PORT=5000
 NODE_ENV=development
 ```
+
+Per XAMPP locale, i valori tipici sono:
+- `DB_HOST=localhost`
+- `DB_PORT=3306`
+- `DB_USER=root`
+- `DB_PASSWORD=` (vuota di default, se non l'hai modificata)
+- `DB_NAME=ianime`
+
+Se usi phpMyAdmin, assicurati che il servizio MySQL di XAMPP sia avviato prima di lanciare il backend.
 
 ### Inizializzazione Database
 Per popolare il database con dati di esempio:
@@ -151,19 +160,11 @@ Il server creerà il database se non esiste e si connetterà automaticamente a M
 - Canali vocali: max 10 membri
 - Username change: ogni 5 giorni
 
-## Relazioni e Popolamento
+## Relazioni e Query
 
-I documenti usano riferimenti ObjectId per le relazioni. Esempio di popolazione:
+Le relazioni sono gestite con chiavi esterne SQL (ad esempio `communities.adminId -> users.id`, `messages.authorId -> users.id`) e con query dirette tramite `mysql2`.
 
-```javascript
-const community = await Community.findById(id)
-  .populate('adminId')
-  .populate('members')
-  .populate({
-    path: 'channelGroups',
-    populate: { path: 'channels' }
-  });
-```
+Per i campi strutturati (`notifications`, `roles`, `members`, `hashtags`, ecc.) il backend salva JSON serializzato in colonne di tipo `JSON` e lo normalizza in lettura.
 
 ## Indici
 
@@ -177,6 +178,6 @@ Gli indici sono configurati per ottimizzare le query comuni:
 ## Schema Evolution
 
 Per modificare gli schemi:
-1. Aggiorna il file del modello in `server/models/`
-2. Mongoose applicherà automaticamente le modifiche al prossimo write
-3. Per migrazioni complesse, crea uno script dedicato in `server/db/migrations/`
+1. Aggiorna le istruzioni SQL in `server/db/schema.js`
+2. Se serve riallineare lo schema locale, esegui `npm run seed` (reset + ricreazione tabelle + dati demo)
+3. Per migrazioni senza reset dati, crea script SQL o script Node dedicati in `server/db/`

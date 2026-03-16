@@ -8,7 +8,7 @@ let pool;
 const getDbConfig = () => {
   const databaseUrl = process.env.DATABASE_URL;
 
-  if (databaseUrl && !databaseUrl.startsWith('mongodb')) {
+  if (databaseUrl) {
     const parsedUrl = new URL(databaseUrl);
 
     return {
