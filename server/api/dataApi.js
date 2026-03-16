@@ -91,7 +91,12 @@ const validateRequiredFields = (resource, payload) => {
 const buildInsertStatement = (resource, payload) => {
   const fields = Object.keys(payload);
   const placeholders = fields.map(() => '?').join(', ');
-  const sql = `INSERT INTO ${resource.tableName} (${fields.join(', ')}) VALUES (${placeholders})`;
+  const sql = `
+    INSERT INTO ${resource.tableName}
+      (${fields.join(', ')})
+    VALUES
+      (${placeholders})
+  `;
   const params = fields.map((field) => payload[field]);
 
   return { sql, params };
@@ -100,7 +105,12 @@ const buildInsertStatement = (resource, payload) => {
 const buildUpdateStatement = (resource, payload, id) => {
   const fields = Object.keys(payload);
   const assignments = fields.map((field) => `${field} = ?`).join(', ');
-  const sql = `UPDATE ${resource.tableName} SET ${assignments} WHERE ${resource.primaryKey} = ? AND deletedAt IS NULL`;
+  const sql = `
+    UPDATE ${resource.tableName}
+    SET ${assignments}
+    WHERE ${resource.primaryKey} = ?
+      AND deletedAt IS NULL
+  `;
   const params = [...fields.map((field) => payload[field]), id];
 
   return { sql, params };
@@ -108,7 +118,13 @@ const buildUpdateStatement = (resource, payload, id) => {
 
 const fetchActiveRecordById = async (resource, id) => {
   const [rows] = await execute(
-    `SELECT * FROM ${resource.tableName} WHERE ${resource.primaryKey} = ? AND deletedAt IS NULL LIMIT 1`,
+    `
+      SELECT *
+      FROM ${resource.tableName}
+      WHERE ${resource.primaryKey} = ?
+        AND deletedAt IS NULL
+      LIMIT 1
+    `,
     [id]
   );
 
@@ -128,7 +144,15 @@ const getRolesByIds = async (roleIds) => {
   }
 
   const placeholders = ids.map(() => '?').join(', ');
-  const [rows] = await execute(`SELECT * FROM roles WHERE id IN (${placeholders}) AND deletedAt IS NULL`, ids);
+  const [rows] = await execute(
+    `
+      SELECT *
+      FROM roles
+      WHERE id IN (${placeholders})
+        AND deletedAt IS NULL
+    `,
+    ids
+  );
   return rows.map((row) => normalizeRecord(resourceMap.roles, row));
 };
 
@@ -191,7 +215,13 @@ const listHandler = async (resource, req, res) => {
   const offset = Math.max(Number(req.query.offset) || 0, 0);
 
   const [rows] = await execute(
-    `SELECT * FROM ${resource.tableName} WHERE deletedAt IS NULL ORDER BY ${resource.primaryKey} DESC LIMIT ? OFFSET ?`,
+    `
+      SELECT *
+      FROM ${resource.tableName}
+      WHERE deletedAt IS NULL
+      ORDER BY ${resource.primaryKey} DESC
+      LIMIT ? OFFSET ?
+    `,
     [limit, offset]
   );
 
@@ -373,7 +403,12 @@ const deleteHandler = async (resource, req, res) => {
   }
 
   const [result] = await execute(
-    `UPDATE ${resource.tableName} SET deletedAt = CURRENT_TIMESTAMP WHERE ${resource.primaryKey} = ? AND deletedAt IS NULL`,
+    `
+      UPDATE ${resource.tableName}
+      SET deletedAt = CURRENT_TIMESTAMP
+      WHERE ${resource.primaryKey} = ?
+        AND deletedAt IS NULL
+    `,
     [req.params.id]
   );
 
@@ -481,7 +516,17 @@ router.post('/auth/login', async (req, res, next) => {
       return res.status(400).json({ error: 'Email e password sono obbligatorie' });
     }
 
-    const [rows] = await execute('SELECT * FROM users WHERE email = ? AND deletedAt IS NULL LIMIT 1', [email.toLowerCase()]);
+    const [rows] = await execute(
+      `
+        SELECT *
+        FROM users
+        WHERE email = ?
+          AND deletedAt IS NULL
+        LIMIT 1
+      `,
+      [email.toLowerCase()]
+    );
+
     const user = rows[0];
 
     if (!user) {
@@ -593,19 +638,43 @@ router.post('/v1/communities/:id/members/:memberId/kick', authenticateToken, asy
     }
 
     const updatedMembers = currentMembers.filter((memberId) => memberId !== targetMemberId);
-    await execute('UPDATE communities SET members = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(updatedMembers), req.params.id]);
+    await execute(
+      `
+        UPDATE communities
+        SET members = ?
+        WHERE id = ?
+          AND deletedAt IS NULL
+      `,
+      [JSON.stringify(updatedMembers), req.params.id]
+    );
 
     const roles = await getRolesByIds(community.roles);
     for (const role of roles) {
       const updatedRoleMembers = ensureArray(role.members).map(Number).filter((memberId) => memberId !== targetMemberId);
-      await execute('UPDATE roles SET members = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(updatedRoleMembers), role.id]);
+      await execute(
+        `
+          UPDATE roles
+          SET members = ?
+          WHERE id = ?
+            AND deletedAt IS NULL
+        `,
+        [JSON.stringify(updatedRoleMembers), role.id]
+      );
     }
 
     const targetUser = await getActiveUserById(targetMemberId);
     if (targetUser) {
       const normalizedUser = normalizeRecord(resourceMap.users, targetUser);
       const updatedCommunities = ensureArray(normalizedUser.communities).map(Number).filter((communityId) => communityId !== Number(req.params.id));
-      await execute('UPDATE users SET communities = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(updatedCommunities), targetMemberId]);
+      await execute(
+        `
+          UPDATE users
+          SET communities = ?
+          WHERE id = ?
+            AND deletedAt IS NULL
+        `,
+        [JSON.stringify(updatedCommunities), targetMemberId]
+      );
     }
 
     const updatedCommunity = await getCommunityById(req.params.id);
@@ -632,7 +701,12 @@ router.get('/v1/communities/:id/members', authenticateToken, async (req, res, ne
 
     const members = ensureArray(community.members);
     const [rows] = await execute(
-      `SELECT id, username, profileImage FROM users WHERE id IN (?) AND deletedAt IS NULL`,
+      `
+        SELECT id, username, profileImage
+        FROM users
+        WHERE id IN (?)
+          AND deletedAt IS NULL
+      `,
       [members]
     );
 
@@ -660,7 +734,15 @@ router.post('/v1/communities/:id/members', authenticateToken, async (req, res, n
     }
 
     members.push(userId);
-    await execute('UPDATE communities SET members = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(members), communityId]);
+    await execute(
+      `
+        UPDATE communities
+        SET members = ?
+        WHERE id = ?
+          AND deletedAt IS NULL
+      `,
+      [JSON.stringify(members), communityId]
+    );
 
     res.status(201).json({ message: 'Membro aggiunto con successo' });
   } catch (error) {
@@ -681,7 +763,15 @@ router.delete('/v1/communities/:id/members/:memberId', authenticateToken, async 
     }
 
     const members = ensureArray(community.members).filter((id) => id !== memberId);
-    await execute('UPDATE communities SET members = ? WHERE id = ? AND deletedAt IS NULL', [JSON.stringify(members), communityId]);
+    await execute(
+      `
+        UPDATE communities
+        SET members = ?
+        WHERE id = ?
+          AND deletedAt IS NULL
+      `,
+      [JSON.stringify(members), communityId]
+    );
 
     res.status(200).json({ message: 'Membro rimosso con successo' });
   } catch (error) {
