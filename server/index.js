@@ -5,6 +5,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const { connectDB } = require('./db/connection');
 const { dataApiRouter } = require('./api/dataApi');
+const { communityEndpointsRouter } = require('./api/communityEndpoints');
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api', dataApiRouter);
+app.use('/api', communityEndpointsRouter);
 
 // Cache for geolocation and JustWatch results
 const geoCache = new Map();

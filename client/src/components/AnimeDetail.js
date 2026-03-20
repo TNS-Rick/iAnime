@@ -2,10 +2,11 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import Community from './Community';
 import MerchSuggestions from './MerchSuggestions';
 import StreamingPlatforms from './StreamingPlatforms';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 
 function AnimeDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [anime, setAnime] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -154,33 +155,131 @@ function AnimeDetail() {
     return [];
   }, [jwPlatforms, anime]);
 
-  if (loading) return <div className="text-center my-5">Caricamento...</div>;
-  if (error) return <div className="alert alert-danger">{error}</div>;
+  if (loading) {
+    return (
+      <div className="container my-5">
+        <button className="btn btn-secondary mb-3" onClick={() => navigate('/')}>
+          ← Torna indietro
+        </button>
+        <div className="loading">
+          <span className="spinner-border text-primary me-2"></span>
+          <span>Caricamento anime...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container my-5">
+        <button className="btn btn-secondary mb-3" onClick={() => navigate('/')}>
+          ← Torna indietro
+        </button>
+        <div className="alert alert-danger">{error}</div>
+      </div>
+    );
+  }
+
   if (!anime) return null;
 
   return (
-    <div className="container my-4">
-      <div className="row">
-        <div className="col-md-4">
-          <img src={anime.images?.jpg?.image_url} alt={anime.title} className="img-fluid rounded mb-3" />
-        </div>
-        <div className="col-md-8">
-          <h2>{anime.title}</h2>
-          <p>{anime.synopsis}</p>
-          <StreamingPlatforms platforms={platformsWithLinks} />
+    <div className="main-container">
+      <button className="btn btn-secondary mb-4" onClick={() => navigate('/')}>
+        ← Torna indietro
+      </button>
+
+      <div className="card mb-4">
+        <div className="card-body">
+          <div className="row">
+            <div className="col-md-4 mb-3">
+              <img 
+                src={anime.images?.jpg?.image_url} 
+                alt={anime.title} 
+                className="img-fluid rounded" 
+                style={{boxShadow: '0 0 30px rgba(0, 212, 255, 0.3)'}}
+              />
+            </div>
+            <div className="col-md-8">
+              <h2 style={{background: 'linear-gradient(135deg, #00d4ff 0%, #ff006e 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>
+                {anime.title}
+              </h2>
+              <div className="mb-3">
+                {anime.score && (
+                  <span className="badge me-2" style={{background: 'linear-gradient(135deg, #00d4ff 0%, #8338ec 100%)'}}>
+                    ⭐ {anime.score}/10
+                  </span>
+                )}
+                {anime.status && (
+                  <span className="badge" style={{background: 'linear-gradient(135deg, #ff006e 0%, #ffd60a 100%)'}}>
+                    {anime.status}
+                  </span>
+                )}
+              </div>
+              <p style={{color: '#a0a0cc', fontSize: '1.1rem', lineHeight: '1.6'}}>
+                {anime.synopsis}
+              </p>
+              {anime.episodes && (
+                <p style={{color: '#00d4ff'}}>
+                  <strong>Episodi:</strong> {anime.episodes}
+                </p>
+              )}
+              {anime.aired?.from && (
+                <p style={{color: '#00d4ff'}}>
+                  <strong>Anno:</strong> {new Date(anime.aired.from).getFullYear()}
+                </p>
+              )}
+              <StreamingPlatforms platforms={platformsWithLinks} />
+            </div>
+          </div>
         </div>
       </div>
+
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">📺 Informazioni Aggiuntive</h5>
+        </div>
+        <div className="card-body">
+          <div className="row">
+            <div className="col-md-6">
+              {anime.genres && anime.genres.length > 0 && (
+                <div className="mb-3">
+                  <strong style={{color: '#00d4ff'}}>Generi:</strong>
+                  <div style={{marginTop: '0.5rem'}}>
+                    {anime.genres.map(g => (
+                      <span key={g.mal_id} className="badge me-2" style={{background: 'rgba(131, 56, 236, 0.5)', border: '1px solid #8338ec'}}>
+                        {g.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="col-md-6">
+              {anime.studios && anime.studios.length > 0 && (
+                <div className="mb-3">
+                  <strong style={{color: '#00d4ff'}}>Studio:</strong>
+                  <p>{anime.studios.map(s => s.name).join(', ')}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <hr />
-      <h4>Community</h4>
+      <h3 className="text-primary mb-4">👥 Community</h3>
       <Community />
+
       <hr />
-      <h4>Prodotti consigliati</h4>
+      <h3 className="text-primary mb-4">🛍️ Prodotti Consigliati</h3>
       <div className="row">
         {products.map((prod, idx) => (
-          <div className="col-4 col-md-2 text-center" key={idx}>
-            <a href={prod.url} target="_blank" rel="noopener noreferrer">
-              <img src={prod.img} alt={prod.name} className="img-thumbnail mb-2" />
-              <div>{prod.name}</div>
+          <div className="col-md-4 col-sm-6 mb-3" key={idx}>
+            <a href={prod.url} target="_blank" rel="noopener noreferrer" className="card" style={{textDecoration: 'none'}}>
+              <img src={prod.img} alt={prod.name} className="card-img-top" />
+              <div className="card-body text-center">
+                <h6 className="card-title">{prod.name}</h6>
+              </div>
             </a>
           </div>
         ))}

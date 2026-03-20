@@ -48,6 +48,7 @@ function AnimeSearch() {
           title: anime.title,
           image: anime.images?.jpg?.image_url,
           synopsis: anime.synopsis,
+          rating: anime.score,
         })));
       } else {
         setResults([]);
@@ -83,40 +84,85 @@ function AnimeSearch() {
   };
 
   return (
-    <div className="container my-4">
-      <form className="row g-2 align-items-center mb-4" onSubmit={handleSearch}>
-        <div className="col-auto flex-grow-1">
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Cerca un anime..."
-            value={query}
-            onChange={handleInputChange}
-          />
+    <div className="anime-search-container">
+      <div className="card mb-4">
+        <div className="card-body">
+          <form className="d-flex gap-2 mb-3" onSubmit={handleSearch}>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Scrivi il nome di un anime..."
+              value={query}
+              onChange={handleInputChange}
+              aria-label="Ricerca anime"
+            />
+            <button type="submit" className="btn btn-primary" disabled={isSearching}>
+              {isSearching ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  Cerca...
+                </>
+              ) : (
+                <>🔍 Cerca</>
+              )}
+            </button>
+          </form>
         </div>
-        <div className="col-auto">
-          <button type="submit" className="btn btn-primary" disabled={isSearching}>
-            {isSearching ? 'Cercando...' : 'Cerca'}
-          </button>
-        </div>
-      </form>
-      <div className="row">
-        {results.map((anime) => (
-          <div key={anime.id} className="col-md-6 col-lg-4 mb-4">
-            <div className="card h-100 shadow-sm" style={{cursor: 'pointer'}} onClick={() => navigate(`/anime/${anime.id}`)}>
+      </div>
+
+      {results.length > 0 ? (
+        <div className="anime-grid">
+          {results.map((anime) => (
+            <div 
+              key={anime.id} 
+              className="card anime-card"
+              onClick={() => navigate(`/anime/${anime.id}`)}
+              style={{ cursor: 'pointer' }}
+            >
               {anime.image && (
-                <img src={anime.image} alt={anime.title} className="card-img-top" style={{objectFit: 'cover', height: '250px'}} />
+                <div style={{ position: 'relative', overflow: 'hidden', height: '250px' }}>
+                  <img 
+                    src={anime.image} 
+                    alt={anime.title} 
+                    className="img-fluid" 
+                    style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                  />
+                  {anime.rating && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '10px',
+                      right: '10px',
+                      background: 'rgba(0, 212, 255, 0.8)',
+                      color: '#000',
+                      padding: '0.3rem 0.6rem',
+                      borderRadius: '5px',
+                      fontSize: '0.85rem',
+                      fontWeight: 'bold'
+                    }}>
+                      ⭐ {anime.rating}
+                    </div>
+                  )}
+                </div>
               )}
               <div className="card-body">
                 <h5 className="card-title">{anime.title}</h5>
                 {anime.synopsis && (
-                  <p className="card-text" style={{fontSize: '0.95em', color: '#555'}}>{anime.synopsis.slice(0, 180)}...</p>
+                  <p className="card-text" style={{ fontSize: '0.9em', color: '#a0a0cc', height: '80px', overflow: 'hidden' }}>
+                    {anime.synopsis.slice(0, 200)}...
+                  </p>
                 )}
               </div>
+              <div className="card-footer" style={{ background: 'transparent', borderTop: '1px solid rgba(0,212,255,0.2)' }}>
+                <small className="text-muted">Clicca per dettagli →</small>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : query ? (
+        <div className="alert alert-info" role="alert">
+          💭 Nessun anime trovato. Prova con un altro titolo!
+        </div>
+      ) : null}
     </div>
   );
 }

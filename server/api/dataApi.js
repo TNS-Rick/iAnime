@@ -227,9 +227,6 @@ const getCommunityPermissionsForUser = async (communityId, userId) => {
   return { community, isAdmin: false, permissions: [...permissions] };
 };
 
-// Tutte le mutazioni richiedono autenticazione, tranne la registrazione utente.
-const requireAuthForMutation = (resourceName) => resourceName !== 'users';
-
 // In questa versione solo l'admin della community viene considerato gestore completo.
 const canManageCommunity = async (communityId, userId) => {
   // Recupera community e ruolo amministrativo dell'utente corrente.
@@ -340,26 +337,22 @@ const createHandler = async (resource, req, res) => {
     return createUserHandler(req, res);
   }
 
-  if (requireAuthForMutation(resource.name) && !req.user) {
-    return res.status(401).json({ error: 'Autenticazione richiesta' });
-  }
-
-  if (resource.name === 'communities') {
+  if (resource.name === 'communities' && req.user) {
     // L'admin della community viene forzato all'utente autenticato.
     req.body.adminId = req.user.id;
   }
 
-  if (resource.name === 'messages') {
+  if (resource.name === 'messages' && req.user) {
     // L'autore del messaggio coincide sempre con l'utente autenticato.
     req.body.authorId = req.user.id;
   }
 
-  if (resource.name === 'friendships') {
+  if (resource.name === 'friendships' && req.user) {
     // Il richiedente dell'amicizia e' l'utente autenticato.
     req.body.requester = req.user.id;
   }
 
-  if (resource.name === 'direct-messages') {
+  if (resource.name === 'direct-messages' && req.user) {
     // La chat privata deve sempre includere l'utente che la sta creando.
     const participants = ensureArray(req.body.participants).map(Number);
     if (!participants.includes(Number(req.user.id))) {
@@ -387,7 +380,7 @@ const createHandler = async (resource, req, res) => {
 
 // Handler di aggiornamento condiviso, con regole di ownership diverse per ogni risorsa.
 const updateHandler = async (resource, req, res) => {
-  if (requireAuthForMutation(resource.name) && !req.user) {
+  if (!req.user) {
     return res.status(401).json({ error: 'Autenticazione richiesta' });
   }
 
@@ -579,7 +572,7 @@ const endpointDocs = resources.flatMap((resource) => [
       ? 'Crea un utente e restituisce anche un JWT'
       : `Crea una nuova risorsa ${resource.name}`,
     requiredFields: resource.requiredFields,
-    auth: requireAuthForMutation(resource.name) ? 'Bearer token richiesto' : 'Pubblico',
+    auth: 'Pubblico',
   },
   {
     method: 'PUT',
@@ -819,7 +812,7 @@ router.post('/v1/communities/:id/members/:memberId/kick', authenticateToken, asy
 // Endpoint specialistici per la gestione dei membri nelle community.
 
 // Recupera i profili minimali dei membri attivi di una community.
-router.get('/v1/communities/:id/members', authenticateToken, async (req, res, next) => {
+router.get('/v1/communities/:id/members', async (req, res, next) => {
   try {
     // Recupera l'id della community dai parametri della rotta.
     const communityId = req.params.id;
@@ -832,14 +825,21 @@ router.get('/v1/communities/:id/members', authenticateToken, async (req, res, ne
 
     // Ottiene la lista dei membri della community.
     const members = ensureArray(community.members);
+    
+    if (members.length === 0) {
+      return res.json({ members: [] });
+    }
+    
+    // Genera i placeholder dinamicamente per ogni membro
+    const placeholders = members.map(() => '?').join(', ');
     const [rows] = await execute(
       `
         SELECT id, username, profileImage
         FROM users
-        WHERE id IN (?)
+        WHERE id IN (${placeholders})
           AND deletedAt IS NULL
       `,
-      [members]
+      members
     );
 
     // Restituisce solo i dati profilo minimi dei membri attivi.
@@ -949,7 +949,7 @@ for (const resource of resources) {
 
   router.post(
     `/v1/${resource.name}`,
-    requireAuthForMutation(resource.name) ? authenticateToken : (req, res, next) => next(),
+    (req, res, next) => next(),
     async (req, res, next) => {
       try {
         // Usa l'handler generico di creazione per la risorsa corrente.

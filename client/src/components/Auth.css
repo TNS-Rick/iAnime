@@ -1,0 +1,221 @@
+/* ========== AUTH STYLES ========== */
+
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #050812 0%, #1a0033 100%);
+  padding: 1rem;
+}
+
+.auth-card {
+  background: linear-gradient(135deg, var(--card-bg) 0%, rgba(131, 56, 236, 0.1) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 3rem;
+  max-width: 450px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(15px);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.auth-header h1 {
+  font-size: 3rem;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+  margin: 0;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+.auth-header p {
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.form-group label {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.form-group input {
+  background: rgba(26, 31, 58, 0.6);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.form-group input:focus {
+  background: rgba(26, 31, 58, 0.8);
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+}
+
+.form-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-group input::placeholder {
+  color: var(--text-secondary);
+}
+
+.form-group small {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.password-input-group {
+  position: relative;
+  display: flex;
+}
+
+.password-input-group input {
+  flex: 1;
+  padding-right: 3rem;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.password-toggle:hover {
+  color: var(--primary);
+}
+
+.auth-btn {
+  padding: 1rem !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  margin-top: 0.5rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1.5px !important;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1) !important;
+}
+
+.auth-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 35px rgba(0, 212, 255, 0.4), 0 0 40px rgba(131, 56, 236, 0.3) !important;
+}
+
+.auth-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.auth-footer p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.auth-footer a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.auth-footer a:hover {
+  color: var(--secondary);
+  text-shadow: 0 0 10px var(--primary);
+}
+
+/* Alerts */
+.alert {
+  padding: 1rem;
+  border-radius: 10px;
+  border-left: 4px solid;
+  margin-bottom: 1.5rem;
+  backdrop-filter: blur(10px);
+}
+
+.alert-danger {
+  background: rgba(255, 0, 110, 0.1);
+  border-left-color: var(--secondary);
+  color: #ff6fa0;
+}
+
+.alert-success {
+  background: rgba(0, 212, 255, 0.1);
+  border-left-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .auth-card {
+    padding: 2rem;
+    border-radius: 15px;
+  }
+
+  .auth-header h1 {
+    font-size: 2rem;
+  }
+
+  .form-group {
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-container {
+    min-height: auto;
+    padding: 1rem;
+  }
+
+  .auth-card {
+    padding: 1.5rem;
+  }
+
+  .auth-header h1 {
+    font-size: 1.8rem;
+  }
+
+  .auth-header p {
+    font-size: 0.95rem;
+  }
+}
