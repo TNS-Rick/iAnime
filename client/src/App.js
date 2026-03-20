@@ -8,6 +8,7 @@ import AnimeDetail from './components/AnimeDetail';
 import Settings from './components/Settings';
 import SocialDashboard from './components/SocialDashboard';
 import CommunityDashboard from './components/CommunityDashboard';
+import TestPage from './components/TestPage';
 import Login from './components/Login';
 import Register from './components/Register';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -140,6 +141,9 @@ function App() {
                 <a className="nav-link" href="/settings">⚙️ Impostazioni</a>
               </li>
               <li className="nav-item">
+                <a className="nav-link" href="/test">🧪 Test</a>
+              </li>
+              <li className="nav-item">
                 <span className="nav-link" style={{color: '#00d4ff'}}>
                   👤 {user.username}
                 </span>
@@ -198,6 +202,7 @@ function App() {
           <Route path="/community/:communityId" element={<CommunityDashboard />} />
           <Route path="/social" element={<SocialDashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/test" element={<TestPage />} />
         </Routes>
       </div>
     </Router>
