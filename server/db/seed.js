@@ -1,18 +1,62 @@
 const bcrypt = require('bcryptjs');
-const { connectDB, disconnectDB, getPool, resetDatabase } = require('./connection');
+const { connectDB, disconnectDB, getPool } = require('./connection');
+const { schemaStatements } = require('./schema');
 
 const toJson = (value) => JSON.stringify(value);
 const hashPassword = (value) => bcrypt.hash(value, 10);
 
+/**
+ * Controlla se il database è già stato seedato verificando se ci sono communities
+ */
+const isDatabaseSeeded = async () => {
+  try {
+    const [communities] = await getPool().execute('SELECT COUNT(*) as count FROM communities WHERE deletedAt IS NULL');
+    console.log('📊 Risultato SELECT COUNT communities:', communities);
+    console.log('📊 Count:', communities[0]?.count);
+    const isSeeded = communities[0]?.count > 0;
+    console.log('📊 isSeeded ritorna:', isSeeded);
+    return isSeeded;
+  } catch (error) {
+    console.error('❌ Errore in isDatabaseSeeded:', error.message);
+    return false;
+  }
+};
+
+/**
+ * Controlla se lo schema esiste verificando se la tabella users esiste
+ */
+const schemaExists = async () => {
+  try {
+    const [tables] = await getPool().execute(
+      `SELECT COUNT(*) as count FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`
+    );
+    return tables[0].count > 0;
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Crea lo schema del database se non esiste già
+ */
+const createSchema = async () => {
+  try {
+    for (const statement of schemaStatements) {
+      await getPool().execute(statement);
+    }
+  } catch (error) {
+    console.error('❌ Errore creazione schema:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * Popola il database con dati di esempio
+ */
 const seedDB = async () => {
   let connection;
 
   try {
-    await connectDB();
-    console.log('🗑️  Ricreazione schema MySQL...');
-    await resetDatabase();
-
-    console.log('🌱 Inizio seed del database...');
 
     connection = await getPool().getConnection();
     await connection.beginTransaction();
@@ -224,6 +268,13 @@ const seedDB = async () => {
 
     console.log('✅ Gruppi di canali creati');
 
+    console.log('📝 Sto per inserire la comunità...');
+    console.log('Data:', {
+      name: 'Naruto Central',
+      adminId: user1Id,
+      members: [user1Id, user2Id, user3Id]
+    });
+    
     const [communityResult] = await connection.execute(
       `INSERT INTO communities (
         name, description, adminId, roles, categories, channelGroups, members, pinnedMessages
@@ -273,36 +324,76 @@ const seedDB = async () => {
     console.log('✅ Sessione DM creata');
 
     await connection.commit();
+    console.log('✅ COMMIT ESEGUITO - Comunità dovrebbe essere salvata');
+    connection.release();
 
+    console.log('');
     console.log('✨ Database seed completato con successo!');
     console.log(`
 📊 Statistiche:
-  - Utenti: 3
-  - Anime: 3
-  - Comunità: 1
-  - Canali: 3
-  - Messaggi: 2
-  - Amicizie: 2
+  👤 Utenti: 3 (naruto_fan, demon_slayer_fan, tanjiro_sama)
+  🎬 Anime: 3 (Naruto, Demon Slayer, Jujutsu Kaisen)
+  🏘️ Community: 1 (Naruto Central)
+  📝 Canali: 3 (#general, #voice-chat, #fan-art)
+  💬 Messaggi: 2
+  👫 Amicizie: 2
     `);
 
-    connection.release();
-    await disconnectDB();
+    return true;
   } catch (error) {
-    console.error('❌ Errore seed database:', error);
-
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch (e) {}
       connection.release();
     }
-
-    await disconnectDB();
-    process.exit(1);
+    console.error('❌ Errore seed:', error.message);
+    throw error;
   }
 };
 
-// Run seed if this file is executed directly
-if (require.main === module) {
-  seedDB();
-}
+/**
+ * Esegue l'inizializzazione completa del database:
+ * 1. Crea schema se non esiste
+ * 2. Popola con dati se vuoto
+ */
+const initializeDatabase = async () => {
+  try {
+    await connectDB();
 
-module.exports = seedDB;
+    // 1. Check/Create schema
+    const hasSchema = await schemaExists();
+    console.log('🔍 Schema esiste?', hasSchema);
+    if (!hasSchema) {
+      await createSchema();
+    }
+
+    // 2. Check/Seed data
+    const isSeeded = await isDatabaseSeeded();
+    console.log('🔍 Database già seedato?', isSeeded);
+    if (!isSeeded) {
+      console.log('🚀 Avvio seed...');
+      await seedDB();
+    } else {
+      console.log('⏭️ Database già popolato, skip seed');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Errore inizializzazione database:', error);
+    throw error;
+  }
+};
+
+// Export per uso come modulo
+module.exports = { initializeDatabase, seedDB, isDatabaseSeeded, schemaExists };
+
+// Esegui se chiamato direttamente
+if (require.main === module) {
+  initializeDatabase()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

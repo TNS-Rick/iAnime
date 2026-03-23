@@ -32,35 +32,27 @@ export default function CommunityDashboard() {
 
   const loadCommunities = async () => {
     try {
-      // Mock data - in a real app: GET /api/v1/communities
-      const mockCommunities = [
-        {
-          id: 1,
-          name: 'Anime Lovers',
-          description: 'Community per amanti di anime',
-          adminId: 1,
-          members: [
-            { id: 1, username: 'naruto_fan' },
-            { id: 2, username: 'demon_slayer_fan' },
-            { id: 3, username: 'tanjiro_sama' },
-          ],
-          channels: [
-            { id: 1, name: 'generale', type: 'text', members: 3 },
-            { id: 2, name: 'discussioni', type: 'text', members: 2 },
-            { id: 3, name: 'voice-chat', type: 'voice', members: 1 },
-          ],
-          roles: [
-            { id: 1, name: 'Admin', permissions: ['kick', 'deleteMsg', 'mute', 'manageRoles', 'manageChannels', 'pinMessages'], color: '#ff006e' },
-            { id: 2, name: 'Moderator', permissions: ['deleteMsg', 'mute', 'pinMessages'], color: '#8338ec' },
-            { id: 3, name: 'Membro', permissions: ['writeMessages', 'readMessages'], color: '#00d4ff' },
-          ],
-          pinnedMessages: [],
-        },
-      ];
+      // Fetch communities from backend
+      const response = await fetch('/api/v1/communities', {
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
+      });
 
-      setCommunities(mockCommunities);
+      if (!response.ok) {
+        throw new Error('Errore nel caricamento delle community');
+      }
+
+      const data = await response.json();
+      const fetchedCommunities = data.communities || [];
+      
+      setCommunities(fetchedCommunities);
+
+      // If a specific community was requested via URL param, load it
       if (communityId) {
-        const comm = mockCommunities.find(c => c.id === parseInt(communityId));
+        const comm = fetchedCommunities.find(c => c.id === parseInt(communityId));
         if (comm) {
           loadCommunityDetails(comm);
         }
@@ -73,7 +65,7 @@ export default function CommunityDashboard() {
 
   const loadCommunityDetails = (community) => {
     setSelectedCommunity(community);
-    setChannels(community.channels || []);
+    setChannels(community.channelGroups || []);
     setMembers(community.members || []);
     setRoles(community.roles || []);
     
@@ -81,18 +73,26 @@ export default function CommunityDashboard() {
     setIsAdmin(community.adminId === currentUser.id);
   };
 
-  const handleJoinCommunity = async (communityId) => {
+  const handleJoinCommunity = async (communityIdToJoin) => {
     try {
-      // In a real app: POST /api/v1/communities/:id/members
-      const community = communities.find(c => c.id === communityId);
-      if (community && !community.members.find(m => m.id === currentUser.id)) {
-        community.members.push({ id: currentUser.id, username: currentUser.username });
-        setCommunities([...communities]);
-        loadCommunityDetails(community);
-        setMessage('✅ Hai aderito alla community!');
+      // Make API call to join community
+      const response = await fetch(`/api/v1/communities/${communityIdToJoin}/members`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Errore nell\'adesione alla community');
       }
+
+      // Refresh communities list
+      await loadCommunities();
+      setMessage('✅ Hai aderito alla community!');
     } catch (error) {
-      setMessage('❌ Errore nell\'adesione alla community');
+      setMessage('❌ ' + error.message);
     }
   };
 
