@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authService, socketService } from '../services/api';
 
 export default function SocialDashboard() {
   const navigate = useNavigate();
@@ -15,21 +16,92 @@ export default function SocialDashboard() {
   const [newMessage, setNewMessage] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [message, setMessage] = useState('');
-  const token = localStorage.getItem('token');
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const token = localStorage.getItem('auth_token');
+  const currentUser = authService.getUser() || {};
 
   // Load friends and friend requests
   useEffect(() => {
     loadFriendsData();
+
+    // Ensure Socket.io is connected for real-time DMs
+    if (currentUser && currentUser.id) {
+      const socket = socketService.getSocket();
+      if (!socket || !socket.connected) {
+        socketService.connect(currentUser.id);
+      }
+
+      // Listen for incoming DMs
+      socketService.onDM((data) => {
+        if (data.message) {
+          setChatMessages(prev => [...prev, data.message]);
+        }
+      });
+    }
+
+    return () => {
+      // Don't disconnect as other components might need it
+    };
   }, []);
 
   const loadFriendsData = async () => {
     try {
-      // In a real app, these would be API calls
-      const savedFriends = JSON.parse(localStorage.getItem('friends') || '[]');
-      const savedRequests = JSON.parse(localStorage.getItem('friendRequests') || '[]');
-      setFriends(savedFriends);
-      setFriendRequests(savedRequests);
+      // Fetch friend requests: GET /api/v1/friendships/requests
+      const requestsResponse = await fetch('/api/v1/friendships/requests', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (requestsResponse.ok) {
+        const requestsData = await requestsResponse.json();
+        const requests = requestsData.friendRequests || [];
+        
+        // Fetch requester details for each request
+        const requestsWithDetails = await Promise.all(
+          requests.map(async (req) => {
+            try {
+              const userRes = await fetch(`/api/v1/users/${req.requester}`, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              if (userRes.ok) {
+                const userData = await userRes.json();
+                return { ...req, requusterDetails: userData.user };
+              }
+            } catch (err) {
+              console.error('Error fetching requester details:', err);
+            }
+            return req;
+          })
+        );
+        
+        setFriendRequests(requestsWithDetails);
+      }
+
+      // Fetch friends: GET /api/v1/friendships
+      const friendsResponse = await fetch('/api/v1/friendships', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (friendsResponse.ok) {
+        const friendsData = await friendsResponse.json();
+        setFriends(friendsData.friends || []);
+      }
+
+      // Fetch blocked users: GET /api/v1/users/blocked/list
+      const blockedResponse = await fetch('/api/v1/users/blocked/list', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (blockedResponse.ok) {
+        const blockedData = await blockedResponse.json();
+        setBlockedUsers(blockedData.blockedUsers || []);
+      }
     } catch (error) {
       console.error('Errore nel caricamento amicizie:', error);
     }
@@ -44,17 +116,21 @@ export default function SocialDashboard() {
 
     setIsSearching(true);
     try {
-      // Simula una ricerca sul database
-      // In a real app, would call: GET /api/v1/users/search?username=...
-      const mockUsers = [
-        { id: 2, username: 'demon_slayer_fan', email: 'demon@example.com', profileImage: 'https://via.placeholder.com/150' },
-        { id: 3, username: 'tanjiro_sama', email: 'tanjiro@example.com', profileImage: 'https://via.placeholder.com/150' },
-      ];
-      
-      const filtered = mockUsers.filter(u => 
-        u.username.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      // GET /api/v1/users/search?query=...
+      const response = await fetch(`/api/v1/users/search?query=${encodeURIComponent(searchQuery)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nella ricerca');
+      }
+
+      const filtered = data.users.filter(u => 
         u.id !== currentUser.id &&
-        !blockedUsers.includes(u.id)
+        !blockedUsers.some(bu => bu.id === u.id)
       );
       
       setSearchResults(filtered);
@@ -62,7 +138,7 @@ export default function SocialDashboard() {
         setMessage('⚠️ Nessun utente trovato');
       }
     } catch (error) {
-      setMessage('❌ Errore nella ricerca');
+      setMessage('❌ ' + error.message);
     } finally {
       setIsSearching(false);
     }
@@ -71,7 +147,6 @@ export default function SocialDashboard() {
   const handleUserClick = (user) => {
     setSelectedUser(user);
     setUserProfile(user);
-    // Simula il caricamento della chat
     setChatMessages([]);
     setNewMessage('');
   };
@@ -80,19 +155,20 @@ export default function SocialDashboard() {
     if (!selectedUser) return;
 
     try {
-      // In a real app: POST /api/v1/friendships
-      const request = {
-        requester: currentUser.id,
-        recipient: selectedUser.id,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
+      // POST /api/v1/friendships
+      const response = await fetch('/api/v1/friendships', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ recipientId: selectedUser.id }),
+      });
 
-      // Salva localmente (in production sarebbe nel DB)
-      localStorage.setItem('friendRequests', JSON.stringify([
-        ...friendRequests,
-        request
-      ]));
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Impossibile inviare la richiesta di amicizia');
+      }
 
       setMessage(`✅ Richiesta di amicizia inviata a ${selectedUser.username}`);
       setSelectedUser(null);
@@ -102,33 +178,72 @@ export default function SocialDashboard() {
     }
   };
 
-  const handleAcceptFriendRequest = (requestId) => {
-    // In a real app: PUT /api/v1/friendships/:id
-    const updated = friendRequests.filter(r => r.id !== requestId);
-    setFriendRequests(updated);
-    setMessage('✅ Richiesta di amicizia accettata');
+  const handleAcceptFriendRequest = async (requestId) => {
+    try {
+      // POST /api/v1/friendships/:id/accept
+      const response = await fetch(`/api/v1/friendships/${requestId}/accept`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nell\'accettazione della richiesta');
+      }
+
+      await loadFriendsData();
+      setMessage('✅ Richiesta di amicizia accettata');
+    } catch (error) {
+      setMessage('❌ ' + error.message);
+    }
   };
 
-  const handleRejectFriendRequest = (requestId) => {
-    const updated = friendRequests.filter(r => r.id !== requestId);
-    setFriendRequests(updated);
-    setMessage('✅ Richiesta di amicizia rifiutata');
+  const handleRejectFriendRequest = async (requestId) => {
+    try {
+      // POST /api/v1/friendships/:id/reject
+      const response = await fetch(`/api/v1/friendships/${requestId}/reject`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nel rifiuto della richiesta');
+      }
+
+      await loadFriendsData();
+      setMessage('✅ Richiesta di amicizia rifiutata');
+    } catch (error) {
+      setMessage('❌ ' + error.message);
+    }
   };
 
   const handleBlockUser = async () => {
     if (!selectedUser) return;
 
     try {
-      // In a real app: POST /api/v1/block
-      const newBlocked = [...blockedUsers, selectedUser.id];
-      setBlockedUsers(newBlocked);
-      localStorage.setItem('blockedUsers', JSON.stringify(newBlocked));
-      
+      // POST /api/v1/users/:id/block
+      const response = await fetch(`/api/v1/users/${selectedUser.id}/block`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Errore nel blocco dell\'utente');
+      }
+
+      await loadFriendsData();
       setMessage(`🚫 ${selectedUser.username} è stato bloccato`);
       setSelectedUser(null);
       setUserProfile(null);
     } catch (error) {
-      setMessage('❌ Errore nel blocco dell\'utente');
+      setMessage('❌ ' + error.message);
     }
   };
 
@@ -136,25 +251,58 @@ export default function SocialDashboard() {
     if (!newMessage.trim() || !selectedUser) return;
 
     try {
+      // POST /api/v1/direct-messages
+      const response = await fetch('/api/v1/direct-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          recipientId: selectedUser.id,
+          content: newMessage.trim(),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nell\'invio del messaggio');
+      }
+
+      // Add message to local state
       const message = {
-        id: Date.now(),
-        author: currentUser.username,
-        content: newMessage,
-        timestamp: new Date().toISOString(),
+        ...data.message,
+        author: data.message?.author || { id: currentUser.id, username: currentUser.username }
       };
 
       setChatMessages([...chatMessages, message]);
       setNewMessage('');
+      setMessage('✅ Messaggio inviato');
     } catch (error) {
-      setMessage('❌ Errore nell\'invio del messaggio');
+      setMessage('❌ ' + error.message);
     }
   };
 
-  const handleUnblockUser = (userId) => {
-    const updated = blockedUsers.filter(id => id !== userId);
-    setBlockedUsers(updated);
-    localStorage.setItem('blockedUsers', JSON.stringify(updated));
-    setMessage('✅ Utente sbloccato');
+  const handleUnblockUser = async (userId) => {
+    try {
+      // DELETE /api/v1/users/:id/block
+      const response = await fetch(`/api/v1/users/${userId}/block`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nello sblocco dell\'utente');
+      }
+
+      await loadFriendsData();
+      setMessage('✅ Utente sbloccato');
+    } catch (error) {
+      setMessage('❌ ' + error.message);
+    }
   };
 
   return (
@@ -257,10 +405,10 @@ export default function SocialDashboard() {
                 <p className="text-muted">Nessuna richiesta di amicizia in sospeso</p>
               ) : (
                 <div className="requests-list">
-                  {friendRequests.map((req, idx) => (
-                    <div key={idx} className="request-card">
+                  {friendRequests.map((req) => (
+                    <div key={req.id} className="request-card">
                       <div className="request-info">
-                        <h4>Da: {req.requesterName || 'Utente'}</h4>
+                        <h4>Da: {req.requusterDetails?.username || `Utente ${req.requester}`}</h4>
                         <p className="text-muted">{new Date(req.createdAt).toLocaleDateString('it-IT')}</p>
                       </div>
                       <div className="request-actions">
@@ -318,12 +466,18 @@ export default function SocialDashboard() {
                 <p className="text-muted">Non hai bloccato nessuno</p>
               ) : (
                 <div className="blocked-list">
-                  {blockedUsers.map((userId, idx) => (
-                    <div key={idx} className="blocked-user">
-                      <span>{userId}</span>
+                  {blockedUsers.map((user) => (
+                    <div key={user.id} className="blocked-user">
+                      <div className="blocked-user-info">
+                        <img src={user.profileImage || 'https://via.placeholder.com/40'} alt={user.username} className="user-avatar-sm" />
+                        <div>
+                          <h5>{user.username}</h5>
+                          <p className="text-muted text-sm">{user.email}</p>
+                        </div>
+                      </div>
                       <button 
                         className="btn btn-secondary btn-sm"
-                        onClick={() => handleUnblockUser(userId)}
+                        onClick={() => handleUnblockUser(user.id)}
                       >
                         🔓 Sblocca
                       </button>
@@ -378,7 +532,7 @@ export default function SocialDashboard() {
                     ) : (
                       chatMessages.map(msg => (
                         <div key={msg.id} className={`chat-message ${msg.author === currentUser.username ? 'sent' : 'received'}`}>
-                          <p className="message-author">{msg.author}</p>
+                          <p className="message-author">{typeof msg.author === 'object' ? msg.author?.username : msg.author}</p>
                           <p className="message-content">{msg.content}</p>
                           <small className="text-muted">{new Date(msg.timestamp).toLocaleTimeString('it-IT')}</small>
                         </div>

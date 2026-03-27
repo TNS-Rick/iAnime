@@ -565,7 +565,14 @@ router.post('/v1/direct-messages', authenticateToken, async (req, res, next) => 
     );
 
     res.status(201).json({
-      message: 'Message sent',
+      message: {
+        id: messageObj.id,
+        authorId: req.user.id,
+        author: { id: req.user.id, username: req.user.username },
+        content,
+        timestamp: messageObj.timestamp,
+        dmSessionId: conversationId
+      },
       conversationId,
       messageId: messageObj.id
     });

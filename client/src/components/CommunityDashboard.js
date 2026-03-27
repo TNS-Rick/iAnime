@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { authService, socketService } from '../services/api';
 
 export default function CommunityDashboard() {
   const { communityId } = useParams();
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const token = localStorage.getItem('auth_token');
+  const currentUser = authService.getUser() || {};
 
   const [communities, setCommunities] = useState([]);
   const [selectedCommunity, setSelectedCommunity] = useState(null);
@@ -28,6 +29,18 @@ export default function CommunityDashboard() {
   // Load communities on mount
   useEffect(() => {
     loadCommunities();
+
+    // Ensure Socket.io is connected
+    if (currentUser && currentUser.id) {
+      const socket = socketService.getSocket();
+      if (!socket || !socket.connected) {
+        socketService.connect(currentUser.id);
+      }
+    }
+
+    return () => {
+      // Don't disconnect here as other components might need it
+    };
   }, []);
 
   const loadCommunities = async () => {
@@ -41,11 +54,10 @@ export default function CommunityDashboard() {
           : {},
       });
 
-      if (!response.ok) {
-        throw new Error('Errore nel caricamento delle community');
-      }
-
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nel caricamento delle community');
+      }
       const fetchedCommunities = data.communities || [];
       
       setCommunities(fetchedCommunities);
@@ -63,11 +75,37 @@ export default function CommunityDashboard() {
     }
   };
 
-  const loadCommunityDetails = (community) => {
+  const loadCommunityDetails = async (community) => {
     setSelectedCommunity(community);
     setChannels(community.channelGroups || []);
-    setMembers(community.members || []);
     setRoles(community.roles || []);
+    
+    // Fetch full user objects for members
+    try {
+      const memberIds = community.members || [];
+      const memberUsers = await Promise.all(
+        memberIds.map(async (memberId) => {
+          try {
+            const res = await fetch(`/api/v1/users/${memberId}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              return data.user;
+            }
+          } catch (error) {
+            console.error(`Error fetching user ${memberId}:`, error);
+          }
+          return null;
+        })
+      );
+      setMembers(memberUsers.filter(m => m !== null));
+    } catch (error) {
+      console.error('Error loading member details:', error);
+      setMembers([]);
+    }
     
     // Check if current user is admin
     setIsAdmin(community.adminId === currentUser.id);
@@ -75,8 +113,8 @@ export default function CommunityDashboard() {
 
   const handleJoinCommunity = async (communityIdToJoin) => {
     try {
-      // Make API call to join community
-      const response = await fetch(`/api/v1/communities/${communityIdToJoin}/members`, {
+      // POST /api/v1/communities/:id/join
+      const response = await fetch(`/api/v1/communities/${communityIdToJoin}/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,29 +122,46 @@ export default function CommunityDashboard() {
         },
       });
 
+      // Parse response body for error details
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Errore nell\'adesione alla community');
+        throw new Error(data.error || 'Errore nell\'adesione alla community');
       }
 
       // Refresh communities list
       await loadCommunities();
       setMessage('✅ Hai aderito alla community!');
     } catch (error) {
-      setMessage('❌ ' + error.message);
+      setMessage('❌ ' + (error.message || 'Errore nella richiesta'));
+      console.error('Join community error:', error);
     }
   };
 
   const handleLeaveCommunity = async () => {
+    if (!selectedCommunity) {
+      setMessage('❌ Nessuna community selezionata');
+      return;
+    }
+
     try {
-      // In a real app: DELETE /api/v1/communities/:id/members/:memberId
-      if (selectedCommunity) {
-        selectedCommunity.members = selectedCommunity.members.filter(m => m.id !== currentUser.id);
-        setCommunities([...communities]);
-        setSelectedCommunity(null);
-        setMessage('✅ Hai lasciato la community');
+      // POST /api/v1/communities/:id/leave
+      const response = await fetch(`/api/v1/communities/${selectedCommunity.id}/leave`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Impossibile lasciare la community');
       }
+
+      setCommunities(communities.filter(c => c.id !== selectedCommunity.id));
+      setSelectedCommunity(null);
+      setMessage('✅ Hai lasciato la community');
     } catch (error) {
-      setMessage('❌ Errore nell\'abbandono della community');
+      setMessage('❌ ' + error.message);
     }
   };
 
@@ -116,26 +171,37 @@ export default function CommunityDashboard() {
       return;
     }
 
-    try {
-      // In a real app: POST /api/v1/communities/:id/channels
-      const newChannel = {
-        id: Date.now(),
-        name: newChannelName.toLowerCase(),
-        type: newChannelType,
-        members: [currentUser.id],
-      };
+    if (!selectedCommunity) {
+      setMessage('⚠️ Seleziona una community');
+      return;
+    }
 
-      setChannels([...channels, newChannel]);
-      if (selectedCommunity) {
-        selectedCommunity.channels.push(newChannel);
+    try {
+      // POST /api/v1/communities/:communityId/channels
+      const response = await fetch(`/api/v1/communities/${selectedCommunity.id}/channels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ 
+          name: newChannelName,
+          type: newChannelType
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nella creazione del canale');
       }
+      setChannels([...channels, data.channel]);
       
       setNewChannelName('');
       setNewChannelType('text');
       setShowCreateChannel(false);
       setMessage(`✅ Canale #${newChannelName} creato`);
     } catch (error) {
-      setMessage('❌ Errore nella creazione del canale');
+      setMessage('❌ ' + error.message);
     }
   };
 
@@ -145,27 +211,38 @@ export default function CommunityDashboard() {
       return;
     }
 
-    try {
-      // In a real app: POST /api/v1/communities/:id/roles
-      const newRole = {
-        id: Date.now(),
-        name: newRoleName,
-        color: newRoleColor,
-        permissions: ['writeMessages', 'readMessages'],
-        members: [],
-      };
+    if (!selectedCommunity) {
+      setMessage('⚠️ Seleziona una community');
+      return;
+    }
 
-      setRoles([...roles, newRole]);
-      if (selectedCommunity) {
-        selectedCommunity.roles.push(newRole);
+    try {
+      // POST /api/v1/communities/:id/roles
+      const response = await fetch(`/api/v1/communities/${selectedCommunity.id}/roles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: newRoleName,
+          color: newRoleColor,
+          permissions: ['writeMessages', 'readMessages'],
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nella creazione del ruolo');
       }
+      setRoles([...roles, data.role]);
 
       setNewRoleName('');
       setNewRoleColor('#00d4ff');
       setShowCreateRole(false);
       setMessage(`✅ Ruolo ${newRoleName} creato`);
     } catch (error) {
-      setMessage('❌ Errore nella creazione del ruolo');
+      setMessage('❌ ' + error.message);
     }
   };
 
@@ -173,45 +250,64 @@ export default function CommunityDashboard() {
     if (!newMessage.trim() || !selectedChannel) return;
 
     try {
-      // In a real app: POST /api/v1/communities/:id/channels/:channelId/messages
+      // POST /api/v1/channels/:channelId/messages
+      const response = await fetch(`/api/v1/channels/${selectedChannel.id}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: newMessage }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nell\'invio del messaggio');
+      }
       const msg = {
-        id: Date.now(),
-        author: currentUser.username,
-        authorId: currentUser.id,
-        content: newMessage,
-        timestamp: new Date().toISOString(),
-        isPinned: false,
+        ...data.message,
+        author: data.message.author || { id: currentUser.id, username: currentUser.username }
       };
 
       setMessages([...messages, msg]);
       setNewMessage('');
       setMessage('✅ Messaggio inviato');
     } catch (error) {
-      setMessage('❌ Errore nell\'invio del messaggio');
+      setMessage('❌ ' + error.message);
     }
   };
 
-  const handleSelectChannel = (channel) => {
+  const handleSelectChannel = async (channel) => {
     setSelectedChannel(channel);
-    // Mock load messages - in a real app: GET /api/v1/communities/:id/channels/:channelId/messages
-    setMessages([
-      {
-        id: 1,
-        author: 'naruto_fan',
-        authorId: 1,
-        content: 'Che ne pensate di questa stagione?',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        isPinned: false,
-      },
-      {
-        id: 2,
-        author: 'demon_slayer_fan',
-        authorId: 2,
-        content: 'Fantastica! I combattimenti sono incredibili',
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        isPinned: false,
-      },
-    ]);
+    
+    try {
+      // GET /api/v1/channels/:id/messages
+      const response = await fetch(`/api/v1/channels/${channel.id}/messages`, {
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nel caricamento dei messaggi');
+      }
+      setMessages(data.messages || []);
+
+      // Set up real-time listener for this channel
+      socketService.onChannelMessage(channel.id, (data) => {
+        if (data.type === 'message') {
+          setMessages(prev => [...prev, data.message]);
+        }
+      });
+
+    } catch (error) {
+      console.error(error);
+      setMessages([]);
+      setMessage('⚠️ ' + error.message);
+    }
   };
 
   const handleKickMember = async (memberId) => {
@@ -220,15 +316,28 @@ export default function CommunityDashboard() {
       return;
     }
 
+    if (!selectedCommunity) {
+      setMessage('❌ Nessuna community selezionata');
+      return;
+    }
+
     try {
-      // In a real app: POST /api/v1/communities/:id/members/:memberId/kick
-      setMembers(members.filter(m => m.id !== memberId));
-      if (selectedCommunity) {
-        selectedCommunity.members = selectedCommunity.members.filter(m => m.id !== memberId);
+      // POST /api/v1/communities/:communityId/members/:memberId/kick
+      const response = await fetch(`/api/v1/communities/${selectedCommunity.id}/members/${memberId}/kick`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Impossibile rimuovere il membro');
       }
+
+      setMembers(members.filter(m => m.id !== memberId));
       setMessage('✅ Membro rimosso');
     } catch (error) {
-      setMessage('❌ Errore nella rimozione del membro');
+      setMessage('❌ ' + error.message);
     }
   };
 
@@ -297,7 +406,7 @@ export default function CommunityDashboard() {
           <div className="community-discovery">
             <h4>🔎 Scopri Community</h4>
             {communities
-              .filter(c => !c.members.find(m => m.id === currentUser.id))
+              .filter(c => !c.members.includes(currentUser.id) && !c.members.some(m => parseInt(m) === currentUser.id))
               .map(comm => (
                 <div key={comm.id} className="discovery-card">
                   <h5>{comm.name}</h5>
@@ -377,7 +486,7 @@ export default function CommunityDashboard() {
                         messages.map(msg => (
                           <div key={msg.id} className={`message ${msg.isPinned ? 'pinned' : ''}`}>
                             <div className="message-header">
-                              <strong>{msg.author}</strong>
+                              <strong>{typeof msg.author === 'object' ? msg.author?.username : msg.author}</strong>
                               <small className="text-muted">
                                 {new Date(msg.timestamp).toLocaleTimeString('it-IT')}
                               </small>

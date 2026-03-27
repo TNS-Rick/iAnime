@@ -59,10 +59,23 @@ export const authService = {
   logout: () =>
     apiCall('POST', '/v1/auth/logout'),
 
-  // Store token
+  // Store token and user
   setToken: (token) => {
     authToken = token;
     localStorage.setItem('auth_token', token);
+  },
+
+  // Store user object
+  setUser: (user) => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+  },
+
+  // Get stored user object
+  getUser: () => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : null;
   },
 
   // Get stored token
@@ -73,10 +86,11 @@ export const authService = {
     return authToken;
   },
 
-  // Clear token
+  // Clear token and user
   clearToken: () => {
     authToken = null;
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
   },
 };
 

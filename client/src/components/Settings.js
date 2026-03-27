@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authService } from '../services/api';
 
 export default function Settings() {
   const navigate = useNavigate();
+  const token = localStorage.getItem('auth_token');
+  const currentUser = authService.getUser() || {};
   const [activeTab, setActiveTab] = useState('account');
   const [activeSubTab, setActiveSubTab] = useState('general');
   
@@ -31,95 +34,149 @@ export default function Settings() {
   const [outputDevice, setOutputDevice] = useState('default');
   const [volume, setVolume] = useState(100);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Load settings from localStorage
+  // Load settings from current user profile
   useEffect(() => {
-    const savedSettings = localStorage.getItem('appSettings');
-    if (savedSettings) {
-      const settings = JSON.parse(savedSettings);
-      setEmail(settings.email || '');
-      setTwoFAEnabled(settings.twoFAEnabled || false);
-      setTwoFAMethod(settings.twoFAMethod || 'email');
-      setWhoCanInvite(settings.whoCanInvite || 'all');
-      setAcceptStrangerMessages(settings.acceptStrangerMessages !== false);
-      setIsPremium(settings.isPremium || false);
-      setPaymentMethod(settings.paymentMethod || '');
-      setTheme(settings.theme || 'dark');
-      setDisplayMode(settings.displayMode || 'dark');
-      setMentionNotifications(settings.mentionNotifications !== false);
-      setFriendRequestNotifications(settings.friendRequestNotifications !== false);
-      setSystemNotifications(settings.systemNotifications !== false);
-      setBlockedUsers(settings.blockedUsers || []);
-      setColorBlindMode(settings.colorBlindMode || 'none');
-      setHighContrast(settings.highContrast || false);
-      setTextSize(settings.textSize || 1);
-      setInputDevice(settings.inputDevice || 'default');
-      setOutputDevice(settings.outputDevice || 'default');
-      setVolume(settings.volume || 100);
+    if (currentUser) {
+      setEmail(currentUser.email || '');
+      setTwoFAEnabled(currentUser.twoFAEnabled || false);
+      setTwoFAMethod(currentUser.twoFAMethod || 'email');
+      setWhoCanInvite(currentUser.whoCanInvite || 'all');
+      setAcceptStrangerMessages(currentUser.acceptStrangerMessages !== false);
+      setIsPremium(currentUser.isPremium || false);
+      setPaymentMethod(currentUser.billingMethod || '');
+      setTheme(currentUser.theme || 'dark');
+      setDisplayMode(currentUser.displayMode || 'dark');
+      setColorBlindMode(currentUser.colorblindMode || 'none');
+      setHighContrast(currentUser.highContrast || false);
+      setTextSize(currentUser.textSize || 1);
+      setInputDevice(currentUser.audioInputDevice || 'default');
+      setOutputDevice(currentUser.audioOutputDevice || 'default');
+      setVolume(currentUser.volume || 100);
     }
   }, []);
 
-  // Save settings to localStorage
-  const saveSettings = () => {
-    const settings = {
-      email,
-      twoFAEnabled,
-      twoFAMethod,
-      whoCanInvite,
-      acceptStrangerMessages,
-      isPremium,
-      paymentMethod,
-      theme,
-      displayMode,
-      mentionNotifications,
-      friendRequestNotifications,
-      systemNotifications,
-      blockedUsers,
-      colorBlindMode,
-      highContrast,
-      textSize,
-      inputDevice,
-      outputDevice,
-      volume
-    };
-    localStorage.setItem('appSettings', JSON.stringify(settings));
-    setSuccessMessage('✅ Impostazioni salvate con successo!');
-    setTimeout(() => setSuccessMessage(''), 3000);
+  // Save settings to API
+  const saveSettings = async () => {
+    try {
+      const response = await fetch('/api/v1/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          theme,
+          displayMode,
+          whoCanInvite,
+          acceptStrangerMessages,
+          colorblindMode: colorBlindMode,
+          highContrast,
+          textSize,
+          audioInputDevice: inputDevice,
+          audioOutputDevice: outputDevice,
+          volume,
+          twoFAEnabled,
+          twoFAMethod,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nel salvataggio delle impostazioni');
+      }
+
+      setSuccessMessage('✅ Impostazioni salvate con successo!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setErrorMessage('❌ ' + error.message);
+      setTimeout(() => setErrorMessage(''), 3000);
+    }
   };
 
-  const handleChangeEmail = () => {
+  const handleChangeEmail = async () => {
     if (!twoFAEnabled) {
-      alert('❌ Attiva il 2FA prima di cambiare l\'email');
+      setErrorMessage('❌ Attiva il 2FA prima di cambiare l\'email');
       return;
     }
-    saveSettings();
+    
+    try {
+      const response = await fetch('/api/v1/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nel cambio email');
+      }
+
+      setSuccessMessage('✅ Email aggiornata! Controlla la tua posta per la conferma.');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setErrorMessage('❌ ' + error.message);
+      setTimeout(() => setErrorMessage(''), 3000);
+    }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (!twoFAEnabled) {
-      alert('❌ Attiva il 2FA prima di cambiare la password');
+      setErrorMessage('❌ Attiva il 2FA prima di cambiare la password');
       return;
     }
     if (newPassword.length < 8) {
-      alert('❌ La password deve avere almeno 8 caratteri');
+      setErrorMessage('❌ La password deve avere almeno 8 caratteri');
       return;
     }
-    setPassword(newPassword);
-    setNewPassword('');
-    saveSettings();
+
+    try {
+      const response = await fetch('/api/v1/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          currentPassword: password,
+          newPassword,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore nel cambio password');
+      }
+
+      setPassword('');
+      setNewPassword('');
+      setSuccessMessage('✅ Password aggiornata con successo!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setErrorMessage('❌ ' + error.message);
+      setTimeout(() => setErrorMessage(''), 3000);
+    }
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     const confirmed = window.confirm('⚠️ Sei sicuro di voler eliminare il tuo account? Questa azione non può essere annullata.');
     if (confirmed) {
-      alert('📧 Un\'email di conferma è stata inviata al tuo indirizzo email.');
-      // In a real app, this would trigger an API call
+      try {
+        // In a real scenario, you would call a dedicated delete endpoint
+        alert('📧 Un\'email di conferma è stata inviata al tuo indirizzo email.');
+      } catch (error) {
+        setErrorMessage('❌ ' + error.message);
+      }
     }
   };
 
   const handlePremiumPurchase = () => {
     if (!paymentMethod) {
-      alert('❌ Aggiungi un metodo di pagamento prima di acquistare Premium');
+      setErrorMessage('❌ Aggiungi un metodo di pagamento prima di acquistare Premium');
       return;
     }
     setIsPremium(true);
@@ -134,6 +191,7 @@ export default function Settings() {
       </div>
 
       {successMessage && <div className="alert alert-success">{successMessage}</div>}
+      {errorMessage && <div className="alert alert-danger">{errorMessage}</div>}
 
       <div className="settings-layout">
         {/* Sidebar Navigation */}

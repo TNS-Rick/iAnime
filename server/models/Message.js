@@ -70,34 +70,40 @@ module.exports = {
   },
 
   async findByChannel(channelId, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
       `SELECT * FROM messages 
        WHERE channelId = ? AND deletedAt IS NULL 
        ORDER BY timestamp DESC 
-       LIMIT ? OFFSET ?`,
-      [channelId, limit, offset]
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      [channelId]
     );
     return rows.map(normalizeMessage);
   },
 
   async findByDmSession(dmSessionId, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
       `SELECT * FROM messages 
        WHERE dmSessionId = ? AND deletedAt IS NULL 
        ORDER BY timestamp DESC 
-       LIMIT ? OFFSET ?`,
-      [dmSessionId, limit, offset]
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      [dmSessionId]
     );
     return rows.map(normalizeMessage);
   },
 
   async findByAuthor(authorId, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
       `SELECT * FROM messages 
        WHERE authorId = ? AND deletedAt IS NULL 
        ORDER BY timestamp DESC 
-       LIMIT ? OFFSET ?`,
-      [authorId, limit, offset]
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      [authorId]
     );
     return rows.map(normalizeMessage);
   },

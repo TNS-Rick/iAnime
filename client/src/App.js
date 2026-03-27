@@ -29,6 +29,7 @@ function App() {
       if (savedToken) {
         try {
           const response = await authService.getCurrentUser();
+          authService.setUser(response.user);
           setUser(response.user);
           setToken(savedToken);
           // Connetti Socket.io
@@ -59,6 +60,7 @@ function App() {
 
   const handleLoginSuccess = (userData, userToken) => {
     authService.setToken(userToken);
+    authService.setUser(userData);
     setUser(userData);
     setToken(userToken);
     // Connetti Socket.io
@@ -92,14 +94,6 @@ function App() {
   if (!user || !token) {
     return (
       <Router>
-        {showRegister ? (
-          <Register onRegisterSuccess={handleLoginSuccess} />
-        ) : (
-          <Login onLoginSuccess={handleLoginSuccess} />
-        )}
-      </Router>
-    );
-  }
         {showRegister ? (
           <Register onRegisterSuccess={handleLoginSuccess} />
         ) : (

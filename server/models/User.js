@@ -136,9 +136,11 @@ module.exports = {
   },
 
   async findAll(limit = 100, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 100, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
-      'SELECT * FROM users WHERE deletedAt IS NULL LIMIT ? OFFSET ?',
-      [limit, offset]
+      `SELECT * FROM users WHERE deletedAt IS NULL LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      []
     );
     return rows.map(normalizeUser);
   },
@@ -186,6 +188,15 @@ module.exports = {
   async delete(id) {
     await execute('DELETE FROM users WHERE id = ?', [id]);
     return { id, deleted: true };
+  },
+
+  async search(query) {
+    const searchTerm = `%${query}%`;
+    const [rows] = await execute(
+      'SELECT * FROM users WHERE (username LIKE ? OR email LIKE ?) AND deletedAt IS NULL LIMIT 20',
+      [searchTerm, searchTerm]
+    );
+    return rows.map(normalizeUser);
   },
 
   normalizeUser,

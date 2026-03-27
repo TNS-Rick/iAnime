@@ -75,9 +75,11 @@ module.exports = {
   },
 
   async findByAdmin(adminId, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
-      'SELECT * FROM communities WHERE adminId = ? AND deletedAt IS NULL LIMIT ? OFFSET ?',
-      [adminId, limit, offset]
+      `SELECT * FROM communities WHERE adminId = ? AND deletedAt IS NULL LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      [adminId]
     );
     return rows.map(normalizeCommunity);
   },
@@ -91,9 +93,11 @@ module.exports = {
   },
 
   async findAll(limit = 100, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 100, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
-      'SELECT * FROM communities WHERE deletedAt IS NULL LIMIT ? OFFSET ?',
-      [limit, offset]
+      `SELECT * FROM communities WHERE deletedAt IS NULL LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      []
     );
     return rows.map(normalizeCommunity);
   },

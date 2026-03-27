@@ -96,20 +96,24 @@ module.exports = {
 
   async search(query, limit = 20, offset = 0) {
     const searchPattern = `%${query}%`;
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 20, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
       `SELECT * FROM animes 
        WHERE (title LIKE ? OR description LIKE ? OR hashtags LIKE ?)
        AND deletedAt IS NULL 
-       LIMIT ? OFFSET ?`,
-      [searchPattern, searchPattern, searchPattern, limit, offset]
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      [searchPattern, searchPattern, searchPattern]
     );
     return rows.map(normalizeAnime);
   },
 
   async findAll(limit = 100, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 100, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     const [rows] = await execute(
-      'SELECT * FROM animes WHERE deletedAt IS NULL LIMIT ? OFFSET ?',
-      [limit, offset]
+      `SELECT * FROM animes WHERE deletedAt IS NULL LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      []
     );
     return rows.map(normalizeAnime);
   },

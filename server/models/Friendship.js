@@ -51,6 +51,8 @@ module.exports = {
   },
 
   async findByRequester(userId, status = null, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     let sql = 'SELECT * FROM friendships WHERE requester = ? AND deletedAt IS NULL';
     const params = [userId];
 
@@ -59,14 +61,15 @@ module.exports = {
       params.push(status);
     }
 
-    sql += ' LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    sql += ` LIMIT ${safeLimit} OFFSET ${safeOffset}`;
 
     const [rows] = await execute(sql, params);
     return rows.map(normalizeFriendship);
   },
 
   async findByRecipient(userId, status = null, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     let sql = 'SELECT * FROM friendships WHERE recipient = ? AND deletedAt IS NULL';
     const params = [userId];
 
@@ -75,14 +78,15 @@ module.exports = {
       params.push(status);
     }
 
-    sql += ' LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    sql += ` LIMIT ${safeLimit} OFFSET ${safeOffset}`;
 
     const [rows] = await execute(sql, params);
     return rows.map(normalizeFriendship);
   },
 
   async findByUser(userId, status = null, limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const safeOffset = Math.max(0, parseInt(offset) || 0);
     let sql = `SELECT * FROM friendships 
                WHERE (requester = ? OR recipient = ?) 
                AND deletedAt IS NULL`;
@@ -93,8 +97,7 @@ module.exports = {
       params.push(status);
     }
 
-    sql += ' LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    sql += ` LIMIT ${safeLimit} OFFSET ${safeOffset}`;
 
     const [rows] = await execute(sql, params);
     return rows.map(normalizeFriendship);

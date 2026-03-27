@@ -129,11 +129,15 @@ router.post('/v1/communities/:id/join', authenticateToken, async (req, res, next
     }
 
     const members = community.members || [];
-    if (members.includes(req.user.id)) {
+    const userId = parseInt(req.user.id);
+    
+    // Check if already a member (handle both string and number types)
+    const isMember = members.some(m => parseInt(m) === userId);
+    if (isMember) {
       return res.status(400).json({ error: 'Sei già membro di questa comunità' });
     }
 
-    members.push(req.user.id);
+    members.push(userId);
     await Community.update(req.params.id, { members });
 
     res.json({ message: 'Sei entrato nella comunità' });
@@ -154,7 +158,8 @@ router.post('/v1/communities/:id/leave', authenticateToken, async (req, res, nex
       return res.status(400).json({ error: 'L\'admin della comunità non può uscire' });
     }
 
-    const members = (community.members || []).filter(id => id !== req.user.id);
+    const userId = parseInt(req.user.id);
+    const members = (community.members || []).filter(m => parseInt(m) !== userId);
     await Community.update(req.params.id, { members });
 
     res.json({ message: 'Hai lasciato la comunità' });
@@ -260,10 +265,28 @@ router.delete('/v1/channels/:id', authenticateToken, async (req, res, next) => {
 // Get messages in channel
 router.get('/v1/channels/:id/messages', async (req, res, next) => {
   try {
+    // Validate channel exists
+    const channel = await Channel.findById(req.params.id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Canale non trovato' });
+    }
+
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const messages = await Message.findByChannel(req.params.id, limit, offset);
-    res.json({ messages: messages || [] });
+    
+    // Enrich messages with author information
+    const enrichedMessages = await Promise.all(
+      (messages || []).map(async (msg) => {
+        const author = await User.findById(msg.authorId);
+        return {
+          ...msg,
+          author: author ? { id: author.id, username: author.username } : null
+        };
+      })
+    );
+    
+    res.json({ messages: enrichedMessages || [] });
   } catch (error) {
     next(error);
   }
@@ -284,7 +307,13 @@ router.post('/v1/channels/:id/messages', authenticateToken, async (req, res, nex
       channelId: req.params.id,
     });
 
-    res.status(201).json({ message });
+    // Enrich with author information
+    const enrichedMessage = {
+      ...message,
+      author: { id: req.user.id, username: req.user.username }
+    };
+
+    res.status(201).json({ message: enrichedMessage });
   } catch (error) {
     next(error);
   }
@@ -427,6 +456,177 @@ router.post('/v1/friendships/:id/reject', authenticateToken, async (req, res, ne
 
     await Friendship.softDelete(req.params.id);
     res.json({ message: 'Richiesta rifiutata' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ========== USER ENDPOINTS ==========
+
+// Search users by username
+router.get('/v1/users/search', async (req, res, next) => {
+  try {
+    const { query } = req.query;
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({ error: 'Query deve contenere almeno 2 caratteri' });
+    }
+
+    const users = await User.search(query);
+    const sanitized = users.map(u => sanitizeUser(u));
+    res.json({ users: sanitized });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get user by ID
+router.get('/v1/users/:id', async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+    res.json({ user: sanitizeUser(user) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get user's blocked list
+router.get('/v1/users/blocked/list', authenticateToken, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const blockedIds = user.blockedUsers || [];
+    
+    const blockedUsers = [];
+    for (const blockedId of blockedIds) {
+      const blockedUser = await User.findById(blockedId);
+      if (blockedUser) {
+        blockedUsers.push(sanitizeUser(blockedUser));
+      }
+    }
+    
+    res.json({ blockedUsers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Block a user
+router.post('/v1/users/:id/block', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+    
+    // Validate target user exists
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+    
+    if (req.user.id === userId) {
+      return res.status(400).json({ error: 'Non puoi bloccare te stesso' });
+    }
+
+    const user = await User.findById(req.user.id);
+    const blockedUsers = user.blockedUsers || [];
+    
+    // Check if already blocked
+    if (blockedUsers.includes(userId)) {
+      return res.status(400).json({ error: 'Utente già bloccato' });
+    }
+    
+    blockedUsers.push(userId);
+    await User.update(req.user.id, { blockedUsers });
+
+    res.json({ message: 'Utente bloccato' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Unblock a user
+router.delete('/v1/users/:id/block', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+    
+    // Validate target user exists
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+    
+    const user = await User.findById(req.user.id);
+    const blockedUsers = user.blockedUsers || [];
+    
+    // Check if user is actually blocked
+    if (!blockedUsers.includes(userId)) {
+      return res.status(400).json({ error: 'Utente non è bloccato' });
+    }
+    
+    const updatedBlockedUsers = blockedUsers.filter(uid => uid !== userId);
+    await User.update(req.user.id, { blockedUsers: updatedBlockedUsers });
+    res.json({ message: 'Utente sbloccato' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ========== ROLES ENDPOINTS ==========
+
+// Create role in community
+router.post('/v1/communities/:communityId/roles', authenticateToken, async (req, res, next) => {
+  try {
+    const { name, color, permissions } = req.body;
+    const community = await Community.findById(req.params.communityId);
+
+    if (!community) {
+      return res.status(404).json({ error: 'Comunità non trovata' });
+    }
+
+    if (community.adminId !== req.user.id) {
+      return res.status(403).json({ error: 'Solo l\'admin può creare ruoli' });
+    }
+
+    // In a real app, you'd create a Role model. For now, we update community roles
+    const role = {
+      id: Date.now(),
+      name,
+      color: color || '#00d4ff',
+      permissions: permissions || [],
+      members: []
+    };
+
+    const roles = community.roles || [];
+    roles.push(role);
+    await Community.update(req.params.communityId, { roles });
+
+    res.status(201).json({ role });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ========== COMMUNITY MEMBER MANAGEMENT ==========
+
+// Kick member from community
+router.post('/v1/communities/:communityId/members/:memberId/kick', authenticateToken, async (req, res, next) => {
+  try {
+    const community = await Community.findById(req.params.communityId);
+    if (!community) {
+      return res.status(404).json({ error: 'Comunità non trovata' });
+    }
+
+    if (community.adminId !== req.user.id) {
+      return res.status(403).json({ error: 'Solo l\'admin può cacciare i membri' });
+    }
+
+    const memberId = parseInt(req.params.memberId);
+    const members = (community.members || []).filter(m => parseInt(m) !== memberId);
+    await Community.update(req.params.communityId, { members });
+
+    res.json({ message: 'Membro rimosso dalla comunità' });
   } catch (error) {
     next(error);
   }

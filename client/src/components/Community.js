@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { authService } from '../services/api';
 
 function Community() {
   const { communityId } = useParams();
@@ -7,11 +8,18 @@ function Community() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Load current user from localStorage
+  useEffect(() => {
+    const user = authService.getUser();
+    setCurrentUser(user);
+  }, []);
 
   useEffect(() => {
     async function fetchCommunityAndMembers() {
       try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('auth_token');
         let idToFetch = communityId;
 
         // Se non c'è communityId nei params, carica la prima community disponibile
@@ -30,7 +38,6 @@ function Community() {
 
           const listData = await listResponse.json();
           const communities = listData.communities || [];
-          console.log('🔍 Community fetched:', communities);  // ← AGGIUNGI QUESTO
           
           if (communities.length === 0) {
             throw new Error('Nessuna community disponibile');
@@ -118,12 +125,17 @@ function Community() {
     );
   }
 
-  const isMember = community && members.some(m => m.id === JSON.parse(localStorage.getItem('user') || '{}').id);
+  // Check membership: user is member if their ID is in both community.members (IDs array) and members list
+  const isMember = currentUser && community && (
+    community.members.includes(currentUser.id) || 
+    community.members.some(m => parseInt(m) === currentUser.id) ||
+    members.some(m => m.id === currentUser.id)
+  );
 
   const handleJoinCommunity = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/v1/communities/${communityId}/members`, {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/v1/communities/${community.id}/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,12 +143,13 @@ function Community() {
         },
       });
 
+      const data = await response.json();
       if (!response.ok) {
-        throw new Error('Failed to join community');
+        throw new Error(data.error || 'Failed to join community');
       }
 
       // Refresh members list
-      const membersResponse = await fetch(`/api/v1/communities/${communityId}/members`, {
+      const membersResponse = await fetch(`/api/v1/communities/${community.id}/members`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
