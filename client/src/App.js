@@ -11,44 +11,31 @@ import CommunityDashboard from './components/CommunityDashboard';
 import TestPage from './components/TestPage';
 import Login from './components/Login';
 import Register from './components/Register';
+import { authService, socketService } from './services/api';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './index.css';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
 
   // Verifica la sessione al caricamento dell'app
   useEffect(() => {
     const verifySession = async () => {
-      const savedToken = localStorage.getItem('token');
-      const savedUser = localStorage.getItem('user');
+      const savedToken = authService.getToken();
 
-      if (savedToken && savedUser) {
+      if (savedToken) {
         try {
-          // Verifica se il token è ancora valido
-          const response = await fetch('/api/auth/me', {
-            headers: { 'Authorization': `Bearer ${savedToken}` },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setUser(data.user || JSON.parse(savedUser));
-            setToken(savedToken);
-          } else {
-            // Token non valido
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-          }
+          const response = await authService.getCurrentUser();
+          setUser(response.user);
+          setToken(savedToken);
+          // Connetti Socket.io
+          socketService.connect(response.user.id);
         } catch (error) {
-          // Errore di connessione, mantengo il token se c'è
-          console.log('Sessione verificata offline');
-          if (savedUser) {
-            setUser(JSON.parse(savedUser));
-            setToken(savedToken);
-          }
+          console.log('Token non valido, effettua login');
+          authService.clearToken();
         }
       }
       setIsLoading(false);
@@ -57,23 +44,30 @@ function App() {
     verifySession();
 
     // Event listeners per switch tra login e register
-    window.addEventListener('showRegister', () => setShowRegister(true));
-    window.addEventListener('showLogin', () => setShowRegister(false));
+    const handleShowRegister = () => setShowRegister(true);
+    const handleShowLogin = () => setShowRegister(false);
+
+    window.addEventListener('showRegister', handleShowRegister);
+    window.addEventListener('showLogin', handleShowLogin);
 
     return () => {
-      window.removeEventListener('showRegister', () => setShowRegister(true));
-      window.removeEventListener('showLogin', () => setShowRegister(false));
+      window.removeEventListener('showRegister', handleShowRegister);
+      window.removeEventListener('showLogin', handleShowLogin);
+      socketService.disconnect();
     };
   }, []);
 
   const handleLoginSuccess = (userData, userToken) => {
+    authService.setToken(userToken);
     setUser(userData);
     setToken(userToken);
+    // Connetti Socket.io
+    socketService.connect(userData.id);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    authService.clearToken();
+    socketService.disconnect();
     setUser(null);
     setToken(null);
   };
@@ -98,6 +92,14 @@ function App() {
   if (!user || !token) {
     return (
       <Router>
+        {showRegister ? (
+          <Register onRegisterSuccess={handleLoginSuccess} />
+        ) : (
+          <Login onLoginSuccess={handleLoginSuccess} />
+        )}
+      </Router>
+    );
+  }
         {showRegister ? (
           <Register onRegisterSuccess={handleLoginSuccess} />
         ) : (

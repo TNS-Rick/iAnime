@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authService } from '../services/api';
 import './Auth.css';
 
 export default function Login({ onLoginSuccess }) {
@@ -14,27 +15,10 @@ export default function Login({ onLoginSuccess }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Login fallito');
-        return;
-      }
-
-      // Salva il token e l'utente in localStorage
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      
-      // Notifica il parent che il login è riuscito
+      const data = await authService.login(email, password);
       onLoginSuccess(data.user, data.token);
     } catch (err) {
-      setError('Errore di connessione al server');
+      setError(err.message || 'Errore di login');
     } finally {
       setIsLoading(false);
     }

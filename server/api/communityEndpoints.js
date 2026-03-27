@@ -1,28 +1,15 @@
 const express = require('express');
 const { authenticateToken, sanitizeUser } = require('./auth');
 const { execute } = require('../db/connection');
+const { Community, Channel, Message, User } = require('../models');
 
 const router = express.Router();
-
-// ========== COMMUNITIES ENDPOINTS ==========
 
 // Get all communities (optional: filter by user)
 router.get('/v1/communities', async (req, res, next) => {
   try {
-    const [communities] = await execute(
-      `SELECT id, name, description, adminId, members, createdAt FROM communities WHERE deletedAt IS NULL ORDER BY createdAt DESC`
-    );
-
-    console.log('📍 GET /api/v1/communities - Comunità trovate:', communities.length);
-    console.log('Dati:', communities);
-
-    const parsedCommunities = communities.map(community => ({
-      ...community,
-      members: JSON.parse(community.members || '[]'),
-      memberCount: JSON.parse(community.members || '[]').length
-    }));
-
-    res.json({ communities: parsedCommunities || [] });
+    const communities = await Community.findAll(50, 0);
+    res.json({ communities: communities || [] });
   } catch (error) {
     next(error);
   }
@@ -32,27 +19,13 @@ router.get('/v1/communities', async (req, res, next) => {
 router.get('/v1/communities/:communityId', async (req, res, next) => {
   try {
     const { communityId } = req.params;
+    const community = await Community.findById(communityId);
 
-    const [community] = await execute(
-      `SELECT id, name, description, adminId, members, roles, channels, channelGroups, pinnedMessages, createdAt FROM communities WHERE id = ? AND deletedAt IS NULL`,
-      [communityId]
-    );
-
-    if (!community || community.length === 0) {
+    if (!community) {
       return res.status(404).json({ error: 'Community not found' });
     }
 
-    const comm = community[0];
-    const parsedCommunity = {
-      ...comm,
-      members: JSON.parse(comm.members || '[]'),
-      roles: JSON.parse(comm.roles || '[]'),
-      channelGroups: JSON.parse(comm.channelGroups || '[]'),
-      pinnedMessages: JSON.parse(comm.pinnedMessages || '[]'),
-      memberCount: JSON.parse(comm.members || '[]').length
-    };
-
-    res.json({ community: parsedCommunity });
+    res.json({ community });
   } catch (error) {
     next(error);
   }
@@ -62,33 +35,21 @@ router.get('/v1/communities/:communityId', async (req, res, next) => {
 router.get('/v1/communities/:communityId/members', async (req, res, next) => {
   try {
     const { communityId } = req.params;
+    const community = await Community.findById(communityId);
 
-    const [community] = await execute(
-      `SELECT members FROM communities WHERE id = ? AND deletedAt IS NULL`,
-      [communityId]
-    );
-
-    if (!community || community.length === 0) {
+    if (!community) {
       return res.status(404).json({ error: 'Community not found' });
     }
 
-    let memberIds = [];
-    try {
-      memberIds = JSON.parse(community[0].members || '[]');
-    } catch (e) {
-      memberIds = [];
-    }
+    const memberIds = community.members || [];
+    const members = [];
 
-    // Fetch user details for each member
-    const placeholders = memberIds.map(() => '?').join(',');
-    let members = [];
-    
-    if (memberIds.length > 0) {
-      const [rows] = await execute(
-        `SELECT id, username, profileImage, bio FROM users WHERE id IN (${placeholders}) AND deletedAt IS NULL`,
-        memberIds
-      );
-      members = rows || [];
+    for (const memberId of memberIds) {
+      const user = await User.findById(memberId);
+      if (user) {
+        const { password, twoFASecret, ...safeUser } = user;
+        members.push(safeUser);
+      }
     }
 
     res.json({ members });
@@ -102,33 +63,19 @@ router.post('/v1/communities/:communityId/members', authenticateToken, async (re
   try {
     const { communityId } = req.params;
     const userId = req.user.id;
+    const community = await Community.findById(communityId);
 
-    const [community] = await execute(
-      `SELECT members FROM communities WHERE id = ? AND deletedAt IS NULL`,
-      [communityId]
-    );
-
-    if (!community || community.length === 0) {
+    if (!community) {
       return res.status(404).json({ error: 'Community not found' });
     }
 
-    let members = [];
-    try {
-      members = JSON.parse(community[0].members || '[]');
-    } catch (e) {
-      members = [];
-    }
-
+    const members = community.members || [];
     if (members.includes(userId)) {
       return res.status(400).json({ error: 'You are already a member of this community' });
     }
 
     members.push(userId);
-
-    await execute(
-      `UPDATE communities SET members = ? WHERE id = ? AND deletedAt IS NULL`,
-      [JSON.stringify(members), communityId]
-    );
+    await Community.update(communityId, { members });
 
     res.json({ message: 'Successfully joined community' });
   } catch (error) {

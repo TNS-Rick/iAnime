@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authService } from '../services/api';
 import './Auth.css';
 
 export default function Register({ onRegisterSuccess }) {
@@ -43,31 +44,14 @@ export default function Register({ onRegisterSuccess }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Registrazione fallita');
-        return;
-      }
-
-      // Salva il token e l'utente in localStorage
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      
-      // Notifica il parent che la registrazione è riuscita
+      const data = await authService.register(
+        formData.email,
+        formData.password,
+        formData.username
+      );
       onRegisterSuccess(data.user, data.token);
     } catch (err) {
-      setError('Errore di connessione al server');
+      setError(err.message || 'Errore di registrazione');
     } finally {
       setIsLoading(false);
     }
