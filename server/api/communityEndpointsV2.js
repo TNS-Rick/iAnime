@@ -1,8 +1,59 @@
 const express = require('express');
 const { authenticateToken, sanitizeUser } = require('./auth');
-const { Community, Channel, Message, User, Friendship } = require('../models');
+const { Community, Channel, ChannelGroup, Message, User, Friendship } = require('../models');
 
 const router = express.Router();
+
+const parseIdArray = (values) => {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isInteger(value));
+};
+
+const hydrateCommunityChannelGroups = async (community) => {
+  const groupIds = parseIdArray(community?.channelGroups || []);
+  if (groupIds.length === 0) return [];
+
+  const groups = await Promise.all(groupIds.map((groupId) => ChannelGroup.findById(groupId)));
+  return groups.filter(Boolean);
+};
+
+const hydrateCommunityChannels = async (community) => {
+  const groups = await hydrateCommunityChannelGroups(community);
+  const orderedChannelIds = [];
+  const channelGroupById = new Map();
+
+  for (const group of groups) {
+    const channelIds = parseIdArray(group.channels || []);
+    for (const channelId of channelIds) {
+      if (!channelGroupById.has(channelId)) {
+        channelGroupById.set(channelId, {
+          channelGroupId: group.id,
+          channelGroupName: group.name,
+        });
+        orderedChannelIds.push(channelId);
+      }
+    }
+  }
+
+  const loadedChannels = await Promise.all(orderedChannelIds.map((channelId) => Channel.findById(channelId)));
+  const channels = loadedChannels
+    .filter(Boolean)
+    .map((channel) => ({
+      ...channel,
+      ...(channelGroupById.get(channel.id) || {}),
+    }));
+
+  return {
+    channels,
+    channelGroups: groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      channels: parseIdArray(group.channels || []),
+    })),
+  };
+};
 
 // ========== COMMUNITIES ENDPOINTS ==========
 
@@ -173,10 +224,22 @@ router.post('/v1/communities/:id/leave', authenticateToken, async (req, res, nex
 // Get channels in community (simple endpoint)
 router.get('/v1/communities/:communityId/channels', async (req, res, next) => {
   try {
+    const community = await Community.findById(req.params.communityId);
+    if (!community) {
+      return res.status(404).json({ error: 'Comunità non trovata' });
+    }
+
     const limit = Math.min(Number(req.query.limit) || 10, 50);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
-    const channels = await Channel.findAll(limit, offset);
-    res.json({ channels: channels || [] });
+
+    const { channels, channelGroups } = await hydrateCommunityChannels(community);
+    const pagedChannels = channels.slice(offset, offset + limit);
+
+    res.json({
+      channels: pagedChannels,
+      channelGroups,
+      count: channels.length,
+    });
   } catch (error) {
     next(error);
   }
@@ -198,7 +261,7 @@ router.get('/v1/channels/:id', async (req, res, next) => {
 // Create channel (admin only)
 router.post('/v1/communities/:communityId/channels', authenticateToken, async (req, res, next) => {
   try {
-    const { type, name } = req.body;
+    const { type, name, channelGroupId } = req.body;
 
     if (!name || !type) {
       return res.status(400).json({ error: 'Nome e tipo sono obbligatori' });
@@ -219,7 +282,42 @@ router.post('/v1/communities/:communityId/channels', authenticateToken, async (r
       members: [req.user.id],
     });
 
-    res.status(201).json({ channel });
+    const channelGroups = await hydrateCommunityChannelGroups(community);
+    if (channelGroups.length === 0) {
+      await Channel.softDelete(channel.id);
+      return res.status(400).json({ error: 'Nessun gruppo di canali disponibile per questa comunità' });
+    }
+
+    const parsedRequestedGroupId = Number.parseInt(channelGroupId, 10);
+    let targetGroup = null;
+
+    if (Number.isInteger(parsedRequestedGroupId)) {
+      targetGroup = channelGroups.find((group) => group.id === parsedRequestedGroupId) || null;
+      if (!targetGroup) {
+        await Channel.softDelete(channel.id);
+        return res.status(400).json({ error: 'Gruppo canale non valido per questa comunità' });
+      }
+    }
+
+    if (!targetGroup) {
+      const preferredKeyword = type === 'voice' ? 'voice' : 'text';
+      targetGroup =
+        channelGroups.find((group) => group.name.toLowerCase().includes(preferredKeyword)) || channelGroups[0];
+    }
+
+    const updatedGroupChannels = Array.from(
+      new Set([...parseIdArray(targetGroup.channels || []), channel.id])
+    );
+
+    await ChannelGroup.update(targetGroup.id, { channels: updatedGroupChannels });
+
+    res.status(201).json({
+      channel: {
+        ...channel,
+        channelGroupId: targetGroup.id,
+        channelGroupName: targetGroup.name,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -312,6 +410,12 @@ router.post('/v1/channels/:id/messages', authenticateToken, async (req, res, nex
       ...message,
       author: { id: req.user.id, username: req.user.username }
     };
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = { type: 'message', message: enrichedMessage };
+      io.to(`channel-${req.params.id}`).emit(`channel-${req.params.id}`, payload);
+    }
 
     res.status(201).json({ message: enrichedMessage });
   } catch (error) {

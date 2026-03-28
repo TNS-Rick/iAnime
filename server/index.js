@@ -31,6 +31,9 @@ async function startServer() {
     await initializeDatabase();
     console.log('✅ Database pronto\n');
 
+    // Expose Socket.io instance to route handlers.
+    app.set('io', io);
+
     // Connect to MySQL
     connectDB();
 
@@ -134,8 +137,8 @@ async function startServer() {
             author: user ? { id: user.id, username: user.username } : null,
           };
 
-          // Broadcast to channel
-          io.emit(`channel-${channelId}`, { type: 'message', message: messageData });
+          // Broadcast only to channel room to avoid cross-channel leaks and duplicates.
+          io.to(`channel-${channelId}`).emit(`channel-${channelId}`, { type: 'message', message: messageData });
           console.log(`📝 Messaggio in canale ${channelId}: ${content.substring(0, 50)}...`);
         } catch (error) {
           console.error('Error in send-message:', error);

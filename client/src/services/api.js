@@ -203,6 +203,15 @@ export const friendshipService = {
 export const socketService = {
   // Initialize socket connection
   connect: (userId) => {
+    if (socket && socket.connected) {
+      return socket;
+    }
+
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+
     socket = io(API_BASE_URL.replace('/api', ''), {
       transports: ['websocket', 'polling'],
     });
@@ -269,6 +278,13 @@ export const socketService = {
   onChannelMessage: (channelId, callback) => {
     if (socket) {
       socket.on(`channel-${channelId}`, callback);
+    }
+  },
+
+  // Remove channel message listener
+  offChannelMessage: (channelId, callback) => {
+    if (socket) {
+      socket.off(`channel-${channelId}`, callback);
     }
   },
 

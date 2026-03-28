@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { authService, socketService } from '../services/api';
 
@@ -12,6 +12,7 @@ export default function CommunityDashboard() {
   const [selectedCommunity, setSelectedCommunity] = useState(null);
   const [activeTab, setActiveTab] = useState('channels');
   const [channels, setChannels] = useState([]);
+  const [availableChannelGroups, setAvailableChannelGroups] = useState([]);
   const [messages, setMessages] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [members, setMembers] = useState([]);
@@ -19,12 +20,15 @@ export default function CommunityDashboard() {
   const [newMessage, setNewMessage] = useState('');
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelType, setNewChannelType] = useState('text');
+  const [selectedChannelGroupId, setSelectedChannelGroupId] = useState('');
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleColor, setNewRoleColor] = useState('#00d4ff');
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [showCreateRole, setShowCreateRole] = useState(false);
+  const activeChannelIdRef = useRef(null);
+  const activeChannelListenerRef = useRef(null);
 
   // Load communities on mount
   useEffect(() => {
@@ -39,9 +43,19 @@ export default function CommunityDashboard() {
     }
 
     return () => {
-      // Don't disconnect here as other components might need it
+      cleanupChannelSubscription();
     };
   }, []);
+
+  const cleanupChannelSubscription = () => {
+    if (activeChannelIdRef.current && activeChannelListenerRef.current) {
+      socketService.offChannelMessage(activeChannelIdRef.current, activeChannelListenerRef.current);
+      socketService.leaveChannel(activeChannelIdRef.current);
+    }
+
+    activeChannelIdRef.current = null;
+    activeChannelListenerRef.current = null;
+  };
 
   const loadCommunities = async () => {
     try {
@@ -76,9 +90,48 @@ export default function CommunityDashboard() {
   };
 
   const loadCommunityDetails = async (community) => {
+    cleanupChannelSubscription();
+    setSelectedChannel(null);
+    setMessages([]);
     setSelectedCommunity(community);
-    setChannels(community.channelGroups || []);
     setRoles(community.roles || []);
+
+    try {
+      const channelsResponse = await fetch(`/api/v1/communities/${community.id}/channels`, {
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
+      });
+
+      const channelsData = await channelsResponse.json();
+      if (!channelsResponse.ok) {
+        throw new Error(channelsData.error || 'Errore nel caricamento dei canali');
+      }
+
+      const fetchedChannels = channelsData.channels || [];
+      const fetchedChannelGroups = channelsData.channelGroups || [];
+      setChannels(fetchedChannels);
+      setAvailableChannelGroups(fetchedChannelGroups);
+
+      if (fetchedChannelGroups.length > 0) {
+        const preferredGroup = fetchedChannelGroups.find((group) =>
+          newChannelType === 'voice'
+            ? group.name.toLowerCase().includes('voice')
+            : group.name.toLowerCase().includes('text')
+        );
+        setSelectedChannelGroupId(String((preferredGroup || fetchedChannelGroups[0]).id));
+      } else {
+        setSelectedChannelGroupId('');
+      }
+    } catch (error) {
+      console.error('Error loading channels:', error);
+      setChannels([]);
+      setAvailableChannelGroups([]);
+      setSelectedChannelGroupId('');
+      setMessage('⚠️ ' + error.message);
+    }
     
     // Fetch full user objects for members
     try {
@@ -186,7 +239,8 @@ export default function CommunityDashboard() {
         },
         body: JSON.stringify({ 
           name: newChannelName,
-          type: newChannelType
+          type: newChannelType,
+          channelGroupId: selectedChannelGroupId ? Number(selectedChannelGroupId) : undefined,
         }),
       });
 
@@ -264,12 +318,6 @@ export default function CommunityDashboard() {
       if (!response.ok) {
         throw new Error(data.error || 'Errore nell\'invio del messaggio');
       }
-      const msg = {
-        ...data.message,
-        author: data.message.author || { id: currentUser.id, username: currentUser.username }
-      };
-
-      setMessages([...messages, msg]);
       setNewMessage('');
       setMessage('✅ Messaggio inviato');
     } catch (error) {
@@ -278,6 +326,7 @@ export default function CommunityDashboard() {
   };
 
   const handleSelectChannel = async (channel) => {
+    cleanupChannelSubscription();
     setSelectedChannel(channel);
     
     try {
@@ -297,17 +346,28 @@ export default function CommunityDashboard() {
       setMessages(data.messages || []);
 
       // Set up real-time listener for this channel
-      socketService.onChannelMessage(channel.id, (data) => {
+      socketService.joinChannel(channel.id);
+      const listener = (data) => {
         if (data.type === 'message') {
           setMessages(prev => [...prev, data.message]);
         }
-      });
+      };
+
+      activeChannelIdRef.current = channel.id;
+      activeChannelListenerRef.current = listener;
+      socketService.onChannelMessage(channel.id, listener);
 
     } catch (error) {
       console.error(error);
       setMessages([]);
       setMessage('⚠️ ' + error.message);
     }
+  };
+
+  const handleBackToChannelList = () => {
+    cleanupChannelSubscription();
+    setSelectedChannel(null);
+    setMessages([]);
   };
 
   const handleKickMember = async (memberId) => {
@@ -474,7 +534,7 @@ export default function CommunityDashboard() {
                 {selectedChannel ? (
                   <div className="channel-view">
                     <div className="channel-header">
-                      <button className="back-btn" onClick={() => setSelectedChannel(null)}>← Indietro</button>
+                      <button className="back-btn" onClick={handleBackToChannelList}>← Indietro</button>
                       <h3>{selectedChannel.type === 'voice' ? '🔊' : '#'} {selectedChannel.name}</h3>
                     </div>
 
@@ -562,10 +622,37 @@ export default function CommunityDashboard() {
                         <select 
                           className="form-control"
                           value={newChannelType}
-                          onChange={(e) => setNewChannelType(e.target.value)}
+                          onChange={(e) => {
+                            const nextType = e.target.value;
+                            setNewChannelType(nextType);
+
+                            const preferredGroup = availableChannelGroups.find((group) =>
+                              nextType === 'voice'
+                                ? group.name.toLowerCase().includes('voice')
+                                : group.name.toLowerCase().includes('text')
+                            );
+
+                            if (preferredGroup) {
+                              setSelectedChannelGroupId(String(preferredGroup.id));
+                            }
+                          }}
                         >
                           <option value="text">Testo</option>
                           <option value="voice">Voce</option>
+                        </select>
+                        <select
+                          className="form-control"
+                          value={selectedChannelGroupId}
+                          onChange={(e) => setSelectedChannelGroupId(e.target.value)}
+                          disabled={availableChannelGroups.length === 0}
+                        >
+                          {availableChannelGroups.length === 0 ? (
+                            <option value="">Nessun gruppo disponibile</option>
+                          ) : (
+                            availableChannelGroups.map((group) => (
+                              <option key={group.id} value={group.id}>{group.name}</option>
+                            ))
+                          )}
                         </select>
                         <button 
                           className="btn btn-primary"
@@ -586,7 +673,7 @@ export default function CommunityDashboard() {
                           {channel.type === 'voice' ? '🔊' : '#'}
                         </div>
                         <h5>{channel.name}</h5>
-                        <p className="text-muted">{channel.members} membri</p>
+                        <p className="text-muted">{Array.isArray(channel.members) ? channel.members.length : 0} membri</p>
                       </div>
                     ))}
                   </div>
