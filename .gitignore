@@ -38,3 +38,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Root test shell scripts
+/test-*.sh
+/*-tests.sh
+/*-test.sh
+/check-*.sh
