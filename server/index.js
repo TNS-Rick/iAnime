@@ -2,15 +2,12 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const { connectDB } = require('./db/connection');
 const { initializeDatabase } = require('./db/seed');
 const { authEndpointsRouter } = require('./api/authEndpoints');
 const { communityEndpointsRouter } = require('./api/communityEndpointsV2');
 const { testEndpointsRouter } = require('./api/testEndpoints');
 const { Message, User, DirectMessage } = require('./models');
-
-dotenv.config();
 
 const app = express();
 const server = http.createServer(app);

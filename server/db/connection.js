@@ -1,4 +1,3 @@
-require('dotenv').config();
 const mysql = require('mysql2/promise');
 const { schemaStatements, resetStatements } = require('./schema');
 
@@ -6,26 +5,12 @@ let isConnected = false;
 let pool;
 
 const getDbConfig = () => {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (databaseUrl) {
-    const parsedUrl = new URL(databaseUrl);
-
-    return {
-      database: decodeURIComponent(parsedUrl.pathname.replace(/^\//, '')) || 'ianime',
-      username: decodeURIComponent(parsedUrl.username || process.env.DB_USER || 'root'),
-      password: decodeURIComponent(parsedUrl.password || process.env.DB_PASSWORD || ''),
-      host: parsedUrl.hostname || process.env.DB_HOST || 'localhost',
-      port: Number(parsedUrl.port || process.env.DB_PORT || 3306),
-    };
-  }
-
   return {
-    database: process.env.DB_NAME || 'ianime',
-    username: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    host: process.env.DB_HOST || 'localhost',
-    port: Number(process.env.DB_PORT || 3306),
+    database: 'ianime',
+    username: 'root',
+    password: 'root',
+    host: 'localhost',
+    port: 3306,
   };
 };
 
@@ -118,7 +103,14 @@ const connectDB = async () => {
     console.log('✅ MySQL connesso con successo');
     return activePool;
   } catch (error) {
-    console.error('❌ Errore connessione MySQL:', error.message);
+    const authMode = dbConfig.password ? 'YES' : 'NO';
+    console.error(
+      `❌ Errore connessione MySQL (${dbConfig.username}@${dbConfig.host}:${dbConfig.port}, password: ${authMode}):`,
+      error.message
+    );
+    console.error(
+      'ℹ️ Verifica che MySQL sia attivo su localhost:3306 e che le credenziali root/root siano valide.'
+    );
     process.exit(1);
   }
 };
