@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService, socketService } from '../services/api';
 
@@ -18,6 +18,38 @@ export default function SocialDashboard() {
   const [message, setMessage] = useState('');
   const token = localStorage.getItem('auth_token');
   const currentUser = authService.getUser() || {};
+  const chatEndRef = useRef(null);
+
+  const sortMessagesChronologically = (messageList = []) => {
+    return [...messageList].sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+
+      return Number(a.id || 0) - Number(b.id || 0);
+    });
+  };
+
+  const isOwnMessage = (msg) => {
+    const authorIdFromObject = typeof msg.author === 'object' ? msg.author?.id : null;
+    const authorId = authorIdFromObject ?? msg.authorId;
+    return Number(authorId) === Number(currentUser.id);
+  };
+
+  const getIncomingMessageAuthor = (msg) => {
+    const authorObj = typeof msg.author === 'object' ? msg.author : null;
+    return {
+      username: authorObj?.username || userProfile?.username || selectedUser?.username || 'Utente',
+      profileImage:
+        authorObj?.profileImage ||
+        userProfile?.profileImage ||
+        selectedUser?.profileImage ||
+        'https://via.placeholder.com/28',
+    };
+  };
 
   // Load friends and friend requests
   useEffect(() => {
@@ -33,7 +65,7 @@ export default function SocialDashboard() {
       // Listen for incoming DMs
       socketService.onDM((data) => {
         if (data.message) {
-          setChatMessages(prev => [...prev, data.message]);
+          setChatMessages(prev => sortMessagesChronologically([...prev, data.message]));
         }
       });
     }
@@ -42,6 +74,27 @@ export default function SocialDashboard() {
       // Don't disconnect as other components might need it
     };
   }, []);
+
+  useEffect(() => {
+    if (!userProfile) {
+      document.body.classList.remove('chat-modal-open');
+      document.body.style.removeProperty('--chat-scrollbar-compensation');
+      return;
+    }
+
+    const scrollbarCompensation = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.setProperty('--chat-scrollbar-compensation', `${Math.max(scrollbarCompensation, 0)}px`);
+    document.body.classList.add('chat-modal-open');
+
+    return () => {
+      document.body.classList.remove('chat-modal-open');
+      document.body.style.removeProperty('--chat-scrollbar-compensation');
+    };
+  }, [userProfile]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const loadFriendsData = async () => {
     try {
@@ -275,7 +328,7 @@ export default function SocialDashboard() {
         author: data.message?.author || { id: currentUser.id, username: currentUser.username }
       };
 
-      setChatMessages([...chatMessages, message]);
+      setChatMessages(prev => sortMessagesChronologically([...prev, message]));
       setNewMessage('');
       setMessage('✅ Messaggio inviato');
     } catch (error) {
@@ -530,14 +583,29 @@ export default function SocialDashboard() {
                     {chatMessages.length === 0 ? (
                       <p className="text-muted text-center">Nessun messaggio. Inizia la conversazione!</p>
                     ) : (
-                      chatMessages.map(msg => (
-                        <div key={msg.id} className={`chat-message ${msg.author === currentUser.username ? 'sent' : 'received'}`}>
-                          <p className="message-author">{typeof msg.author === 'object' ? msg.author?.username : msg.author}</p>
+                      chatMessages.map(msg => {
+                        const ownMessage = isOwnMessage(msg);
+                        const incomingAuthor = ownMessage ? null : getIncomingMessageAuthor(msg);
+
+                        return (
+                        <div key={msg.id} className={`chat-message ${ownMessage ? 'sent' : 'received'}`}>
+                          {!ownMessage && incomingAuthor && (
+                            <div className="chat-message-sender">
+                              <img
+                                src={incomingAuthor.profileImage}
+                                alt={incomingAuthor.username}
+                                className="chat-message-sender-avatar"
+                              />
+                              <span className="chat-message-sender-name">{incomingAuthor.username}</span>
+                            </div>
+                          )}
                           <p className="message-content">{msg.content}</p>
                           <small className="text-muted">{new Date(msg.timestamp).toLocaleTimeString('it-IT')}</small>
                         </div>
-                      ))
+                        );
+                      })
                     )}
+                    <div ref={chatEndRef} />
                   </div>
 
                   <div className="chat-input-group">

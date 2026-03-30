@@ -29,6 +29,55 @@ export default function CommunityDashboard() {
   const [showCreateRole, setShowCreateRole] = useState(false);
   const activeChannelIdRef = useRef(null);
   const activeChannelListenerRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  const normalizeRole = (role) => {
+    if (!role || typeof role !== 'object') {
+      return null;
+    }
+
+    return {
+      ...role,
+      permissions: Array.isArray(role.permissions) ? role.permissions : [],
+    };
+  };
+
+  const sortMessagesChronologically = (messageList = []) => {
+    return [...messageList].sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+
+      return Number(a.id || 0) - Number(b.id || 0);
+    });
+  };
+
+  const isOwnMessage = (msg) => {
+    const authorIdFromObject = typeof msg.author === 'object' ? msg.author?.id : null;
+    const authorId = authorIdFromObject ?? msg.authorId;
+    return Number(authorId) === Number(currentUser.id);
+  };
+
+  const getOtherMessageAuthor = (msg) => {
+    const authorObj = typeof msg.author === 'object' ? msg.author : null;
+    const authorId = authorObj?.id ?? msg.authorId;
+    const member = members.find((item) => Number(item.id) === Number(authorId));
+
+    return {
+      username:
+        authorObj?.username ||
+        member?.username ||
+        (typeof msg.author === 'string' ? msg.author : null) ||
+        'Utente',
+      profileImage:
+        authorObj?.profileImage ||
+        member?.profileImage ||
+        'https://via.placeholder.com/28',
+    };
+  };
 
   // Load communities on mount
   useEffect(() => {
@@ -46,6 +95,14 @@ export default function CommunityDashboard() {
       cleanupChannelSubscription();
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedChannel) {
+      return;
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, selectedChannel]);
 
   const cleanupChannelSubscription = () => {
     if (activeChannelIdRef.current && activeChannelListenerRef.current) {
@@ -94,7 +151,7 @@ export default function CommunityDashboard() {
     setSelectedChannel(null);
     setMessages([]);
     setSelectedCommunity(community);
-    setRoles(community.roles || []);
+    setRoles((Array.isArray(community.roles) ? community.roles : []).map(normalizeRole).filter(Boolean));
 
     try {
       const channelsResponse = await fetch(`/api/v1/communities/${community.id}/channels`, {
@@ -289,7 +346,7 @@ export default function CommunityDashboard() {
       if (!response.ok) {
         throw new Error(data.error || 'Errore nella creazione del ruolo');
       }
-      setRoles([...roles, data.role]);
+      setRoles([...roles, normalizeRole(data.role)].filter(Boolean));
 
       setNewRoleName('');
       setNewRoleColor('#00d4ff');
@@ -343,13 +400,13 @@ export default function CommunityDashboard() {
       if (!response.ok) {
         throw new Error(data.error || 'Errore nel caricamento dei messaggi');
       }
-      setMessages(data.messages || []);
+      setMessages(sortMessagesChronologically(data.messages || []));
 
       // Set up real-time listener for this channel
       socketService.joinChannel(channel.id);
       const listener = (data) => {
         if (data.type === 'message') {
-          setMessages(prev => [...prev, data.message]);
+          setMessages(prev => sortMessagesChronologically([...prev, data.message]));
         }
       };
 
@@ -532,7 +589,7 @@ export default function CommunityDashboard() {
             {activeTab === 'channels' && (
               <div className="tab-content">
                 {selectedChannel ? (
-                  <div className="channel-view">
+                  <div className="channel-view channel-chat-centered">
                     <div className="channel-header">
                       <button className="back-btn" onClick={handleBackToChannelList}>← Indietro</button>
                       <h3>{selectedChannel.type === 'voice' ? '🔊' : '#'} {selectedChannel.name}</h3>
@@ -543,15 +600,26 @@ export default function CommunityDashboard() {
                       {messages.length === 0 ? (
                         <p className="text-muted text-center">Nessun messaggio. Sii il primo a scrivere!</p>
                       ) : (
-                        messages.map(msg => (
-                          <div key={msg.id} className={`message ${msg.isPinned ? 'pinned' : ''}`}>
-                            <div className="message-header">
-                              <strong>{typeof msg.author === 'object' ? msg.author?.username : msg.author}</strong>
-                              <small className="text-muted">
-                                {new Date(msg.timestamp).toLocaleTimeString('it-IT')}
-                              </small>
-                            </div>
+                        messages.map(msg => {
+                          const ownMessage = isOwnMessage(msg);
+                          const authorInfo = ownMessage ? null : getOtherMessageAuthor(msg);
+
+                          return (
+                          <div key={msg.id} className={`message ${ownMessage ? 'own' : 'other'} ${msg.isPinned ? 'pinned' : ''}`}>
+                            {!ownMessage && authorInfo && (
+                              <div className="message-sender">
+                                <img
+                                  src={authorInfo.profileImage}
+                                  alt={authorInfo.username}
+                                  className="message-sender-avatar"
+                                />
+                                <span className="message-sender-name">{authorInfo.username}</span>
+                              </div>
+                            )}
                             <p className="message-content">{msg.content}</p>
+                            <small className="message-time">
+                              {new Date(msg.timestamp).toLocaleTimeString('it-IT')}
+                            </small>
                             <div className="message-actions">
                               {msg.isPinned && <span className="badge badge-primary">📌 Fissato</span>}
                               {isAdmin && (
@@ -574,8 +642,10 @@ export default function CommunityDashboard() {
                               )}
                             </div>
                           </div>
-                        ))
+                        );
+                        })
                       )}
+                      <div ref={messagesEndRef} />
                     </div>
 
                     {/* Message Input */}
@@ -752,7 +822,7 @@ export default function CommunityDashboard() {
                     <h5 style={{ color: role.color }}>{role.name}</h5>
                     <p className="text-muted">Permessi:</p>
                     <ul>
-                      {role.permissions.map((perm, idx) => (
+                      {(Array.isArray(role.permissions) ? role.permissions : []).map((perm, idx) => (
                         <li key={idx}>✓ {perm}</li>
                       ))}
                     </ul>
