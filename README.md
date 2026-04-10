@@ -4,6 +4,11 @@
 
 ---
 
+### Documentazione tecnica
+La documentazione aggiornata del codice si trova in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
+
+---
+
 ### 🎯 Titolo
 **iAnime — La tua guida definitiva nel mondo degli anime**
 
