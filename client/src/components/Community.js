@@ -2,13 +2,37 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { authService } from '../services/api';
 
-function Community() {
+function Community({ animeTags = [] } = {}) {
   const { communityId } = useParams();
   const [community, setCommunity] = useState(null);
+  const [matchedCommunities, setMatchedCommunities] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+
+  const normalizeTag = (value) => {
+    if (!value) return '';
+    return String(value)
+      .trim()
+      .toLowerCase()
+      .replace(/^#/, '');
+  };
+
+  const getAnimeTags = () => {
+    const tags = Array.isArray(animeTags) ? animeTags : [];
+    return tags.map(normalizeTag).filter(Boolean);
+  };
+
+  const hasMatchingTag = (communityTags, targetTags) => {
+    if (!targetTags.length) return true;
+
+    const normalizedCommunityTags = (Array.isArray(communityTags) ? communityTags : [])
+      .map(normalizeTag)
+      .filter(Boolean);
+
+    return normalizedCommunityTags.some((tag) => targetTags.includes(tag));
+  };
 
   // Load current user from localStorage
   useEffect(() => {
@@ -20,6 +44,7 @@ function Community() {
     async function fetchCommunityAndMembers() {
       try {
         const token = localStorage.getItem('auth_token');
+        const targetTags = getAnimeTags();
         let idToFetch = communityId;
 
         // Se non c'è communityId nei params, carica la prima community disponibile
@@ -38,12 +63,26 @@ function Community() {
 
           const listData = await listResponse.json();
           const communities = listData.communities || [];
-          
-          if (communities.length === 0) {
+          const filteredCommunities = targetTags.length
+            ? communities.filter((item) => hasMatchingTag(item.categories, targetTags))
+            : communities;
+
+          if (targetTags.length && filteredCommunities.length === 0) {
+            setMatchedCommunities([]);
+            setCommunity(null);
+            setMembers([]);
+            setLoading(false);
+            return;
+          }
+
+          if (filteredCommunities.length === 0) {
             throw new Error('Nessuna community disponibile');
           }
 
-          idToFetch = communities[0].id;
+          setMatchedCommunities(filteredCommunities);
+          idToFetch = filteredCommunities[0].id;
+        } else {
+          setMatchedCommunities([]);
         }
 
         // Fetch community details
@@ -92,7 +131,7 @@ function Community() {
     }
 
     fetchCommunityAndMembers();
-  }, [communityId]);
+  }, [communityId, animeTags]);
 
   if (loading) {
     return (
@@ -121,6 +160,47 @@ function Community() {
             {error}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (!communityId && getAnimeTags().length > 0 && matchedCommunities.length > 0) {
+    return (
+      <div className="row g-3">
+        {matchedCommunities.map((item) => (
+          <div className="col-md-6" key={item.id}>
+            <div className="card h-100">
+              <div className="card-header">
+                <h5 className="card-title mb-0">👥 {item.name}</h5>
+              </div>
+              <div className="card-body">
+                <p style={{color: '#a0a0cc'}}>{item.description || 'Nessuna descrizione'}</p>
+                <div className="mb-3">
+                  {(Array.isArray(item.categories) ? item.categories : []).map((category) => (
+                    <span
+                      key={category}
+                      className="badge me-2 mb-2"
+                      style={{background: 'rgba(0, 212, 255, 0.15)', border: '1px solid #00d4ff'}}
+                    >
+                      {category}
+                    </span>
+                  ))}
+                </div>
+                <small style={{color: '#a0a0cc'}}>
+                  {Array.isArray(item.members) ? item.members.length : 0} membri
+                </small>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!communityId && getAnimeTags().length > 0 && matchedCommunities.length === 0) {
+    return (
+      <div className="alert alert-info" role="alert">
+        Nessuna community ha tag in comune con questo anime.
       </div>
     );
   }

@@ -268,7 +268,10 @@ function AnimeDetail() {
 
       <hr />
       <h3 className="text-primary mb-4">👥 Community</h3>
-      <Community />
+      <p style={{color: '#a0a0cc', marginTop: '-0.75rem', marginBottom: '1rem'}}>
+        Mostro solo le community che condividono almeno un tag con questo anime.
+      </p>
+      <Community animeTags={anime.hashtags || []} />
 
       <hr />
       <h3 className="text-primary mb-4">🛍️ Prodotti Consigliati</h3>
