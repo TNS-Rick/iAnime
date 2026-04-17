@@ -79,6 +79,22 @@ export default function CommunityDashboard() {
     };
   };
 
+  const getCommunityTags = (community) => {
+    if (!community) {
+      return [];
+    }
+
+    const rawTags = Array.isArray(community.categories)
+      ? community.categories
+      : Array.isArray(community.tags)
+        ? community.tags
+        : [];
+
+    return rawTags
+      .map((tag) => String(tag).trim())
+      .filter(Boolean);
+  };
+
   // Load communities on mount
   useEffect(() => {
     loadCommunities();
@@ -545,6 +561,21 @@ export default function CommunityDashboard() {
             <div className="community-header-section">
               <h2>{selectedCommunity.name}</h2>
               <p className="text-muted">{selectedCommunity.description}</p>
+              <div className="community-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                {getCommunityTags(selectedCommunity).length > 0 ? (
+                  getCommunityTags(selectedCommunity).map((tag) => (
+                    <span
+                      key={tag}
+                      className="badge"
+                      style={{ background: 'rgba(0, 212, 255, 0.15)', border: '1px solid #00d4ff', color: '#e8fbff' }}
+                    >
+                      #{tag}
+                    </span>
+                  ))
+                ) : (
+                  <small className="text-muted">Nessun tag disponibile</small>
+                )}
+              </div>
               {!isAdmin && (
                 <button 
                   className="btn btn-outline-danger"

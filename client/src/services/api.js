@@ -40,8 +40,20 @@ export const authService = {
     apiCall('POST', '/v1/auth/register', { email, password, username }),
 
   // Login
-  login: (email, password) =>
-    apiCall('POST', '/v1/auth/login', { email, password }),
+  login: (email, password, twoFACode = '') =>
+    apiCall('POST', '/v1/auth/login', { email, password, twoFACode }),
+
+  // 2FA setup
+  setupTwoFA: () =>
+    apiCall('GET', '/v1/auth/2fa/setup'),
+
+  // Confirm 2FA setup
+  confirmTwoFA: (secret, code) =>
+    apiCall('POST', '/v1/auth/2fa/confirm', { secret, code }),
+
+  // Disable 2FA
+  disableTwoFA: (password, twoFACode = '') =>
+    apiCall('POST', '/v1/auth/2fa/disable', { password, twoFACode }),
 
   // Get current user
   getCurrentUser: () =>

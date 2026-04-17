@@ -1,10 +1,13 @@
 const express = require('express');
+const qrcode = require('qrcode');
 const {
   authenticateToken,
   sanitizeUser,
   hashPassword,
   comparePassword,
   signUserToken,
+  generateTwoFASecret,
+  verifyTwoFACode,
 } = require('./auth');
 const { User } = require('../models');
 
@@ -58,7 +61,7 @@ router.post('/v1/auth/register', async (req, res, next) => {
 // Login endpoint
 router.post('/v1/auth/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, twoFACode } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email e password sono obbligatori' });
@@ -74,6 +77,25 @@ router.post('/v1/auth/login', async (req, res, next) => {
       return res.status(401).json({ error: 'Credenziali non valide' });
     }
 
+    if (user.twoFAEnabled) {
+      if (!user.twoFASecret) {
+        return res.status(500).json({ error: '2FA configurato in modo non valido' });
+      }
+
+      if (!twoFACode) {
+        return res.json({
+          requiresTwoFA: true,
+          method: user.twoFAMethod || 'app',
+          message: 'Inserisci il codice 2FA per completare l\'accesso',
+        });
+      }
+
+      const isValidTwoFA = verifyTwoFACode(user.twoFASecret, twoFACode);
+      if (!isValidTwoFA) {
+        return res.status(401).json({ error: 'Codice 2FA non valido' });
+      }
+    }
+
     const token = signUserToken(user);
     const sanitized = sanitizeUser(user);
 
@@ -81,6 +103,96 @@ router.post('/v1/auth/login', async (req, res, next) => {
       message: 'Login avvenuto con successo',
       user: sanitized,
       token,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 2FA setup - generate a secret and QR code for authenticator apps
+router.get('/v1/auth/2fa/setup', authenticateToken, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+
+    const secret = generateTwoFASecret(`iAnime (${user.email})`);
+    const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url);
+
+    res.json({
+      method: 'app',
+      secret: secret.base32,
+      otpauthUrl: secret.otpauth_url,
+      qrCodeDataUrl,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 2FA confirm - verify the code and persist the shared secret
+router.post('/v1/auth/2fa/confirm', authenticateToken, async (req, res, next) => {
+  try {
+    const { secret, code } = req.body;
+
+    if (!secret || !code) {
+      return res.status(400).json({ error: 'Secret e codice 2FA sono obbligatori' });
+    }
+
+    if (!verifyTwoFACode(secret, code)) {
+      return res.status(400).json({ error: 'Codice 2FA non valido' });
+    }
+
+    const updatedUser = await User.update(req.user.id, {
+      twoFAEnabled: true,
+      twoFAMethod: 'app',
+      twoFASecret: secret,
+    });
+
+    res.json({
+      message: '2FA attivato con successo',
+      user: sanitizeUser(updatedUser),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 2FA disable - confirm with password and current 2FA code if enabled
+router.post('/v1/auth/2fa/disable', authenticateToken, async (req, res, next) => {
+  try {
+    const { password, twoFACode } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'La password corrente è obbligatoria' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utente non trovato' });
+    }
+
+    const passwordMatch = await comparePassword(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Password non valida' });
+    }
+
+    if (user.twoFAEnabled && user.twoFASecret) {
+      if (!twoFACode || !verifyTwoFACode(user.twoFASecret, twoFACode)) {
+        return res.status(401).json({ error: 'Codice 2FA non valido' });
+      }
+    }
+
+    const updatedUser = await User.update(req.user.id, {
+      twoFAEnabled: false,
+      twoFAMethod: null,
+      twoFASecret: null,
+    });
+
+    res.json({
+      message: '2FA disattivato con successo',
+      user: sanitizeUser(updatedUser),
     });
   } catch (error) {
     next(error);

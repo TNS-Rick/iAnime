@@ -3,6 +3,7 @@ import Community from './Community';
 import MerchSuggestions from './MerchSuggestions';
 import StreamingPlatforms from './StreamingPlatforms';
 import { useParams, useNavigate } from 'react-router-dom';
+import { deriveAnimeTags } from '../utils/animeTags';
 
 function AnimeDetail() {
   const { id } = useParams();
@@ -155,6 +156,8 @@ function AnimeDetail() {
     return [];
   }, [jwPlatforms, anime]);
 
+  const animeTags = useMemo(() => deriveAnimeTags(anime || {}), [anime]);
+
   if (loading) {
     return (
       <div className="container my-5">
@@ -215,6 +218,19 @@ function AnimeDetail() {
                   </span>
                 )}
               </div>
+              {animeTags.length > 0 && (
+                <div className="mb-3" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {animeTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="badge"
+                      style={{ background: 'rgba(0, 212, 255, 0.15)', border: '1px solid #00d4ff', color: '#e8fbff' }}
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <p style={{color: '#a0a0cc', fontSize: '1.1rem', lineHeight: '1.6'}}>
                 {anime.synopsis}
               </p>
@@ -271,7 +287,7 @@ function AnimeDetail() {
       <p style={{color: '#a0a0cc', marginTop: '-0.75rem', marginBottom: '1rem'}}>
         Mostro solo le community che condividono almeno un tag con questo anime.
       </p>
-      <Community animeTags={anime.hashtags || []} />
+      <Community animeTags={animeTags} />
 
       <hr />
       <h3 className="text-primary mb-4">🛍️ Prodotti Consigliati</h3>

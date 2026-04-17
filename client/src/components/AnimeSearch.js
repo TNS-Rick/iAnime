@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { deriveAnimeTags } from '../utils/animeTags';
 
 function AnimeSearch() {
   const [query, setQuery] = useState('');
@@ -49,6 +50,7 @@ function AnimeSearch() {
           image: anime.images?.jpg?.image_url,
           synopsis: anime.synopsis,
           rating: anime.score,
+          tags: deriveAnimeTags(anime),
         })));
       } else {
         setResults([]);
@@ -146,6 +148,19 @@ function AnimeSearch() {
               )}
               <div className="card-body">
                 <h5 className="card-title">{anime.title}</h5>
+                {Array.isArray(anime.tags) && anime.tags.length > 0 && (
+                  <div className="mb-2" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    {anime.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="badge"
+                        style={{ background: 'rgba(0, 212, 255, 0.15)', border: '1px solid #00d4ff', color: '#e8fbff' }}
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {anime.synopsis && (
                   <p className="card-text" style={{ fontSize: '0.9em', color: '#a0a0cc', height: '80px', overflow: 'hidden' }}>
                     {anime.synopsis.slice(0, 200)}...

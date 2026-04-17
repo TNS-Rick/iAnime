@@ -34,6 +34,14 @@ function Community({ animeTags = [] } = {}) {
     return normalizedCommunityTags.some((tag) => targetTags.includes(tag));
   };
 
+  const getCommunityMemberCount = (community) => {
+    if (!community || !Array.isArray(community.members)) {
+      return 0;
+    }
+
+    return community.members.length;
+  };
+
   // Load current user from localStorage
   useEffect(() => {
     const user = authService.getUser();
@@ -64,7 +72,17 @@ function Community({ animeTags = [] } = {}) {
           const listData = await listResponse.json();
           const communities = listData.communities || [];
           const filteredCommunities = targetTags.length
-            ? communities.filter((item) => hasMatchingTag(item.categories, targetTags))
+            ? communities
+                .filter((item) => hasMatchingTag(item.categories, targetTags))
+                .sort((left, right) => {
+                  const sizeDifference = getCommunityMemberCount(right) - getCommunityMemberCount(left);
+
+                  if (sizeDifference !== 0) {
+                    return sizeDifference;
+                  }
+
+                  return String(left.name || '').localeCompare(String(right.name || ''));
+                })
             : communities;
 
           if (targetTags.length && filteredCommunities.length === 0) {
@@ -167,7 +185,7 @@ function Community({ animeTags = [] } = {}) {
   if (!communityId && getAnimeTags().length > 0 && matchedCommunities.length > 0) {
     return (
       <div className="row g-3">
-        {matchedCommunities.map((item) => (
+        {matchedCommunities.slice(0, 6).map((item) => (
           <div className="col-md-6" key={item.id}>
             <div className="card h-100">
               <div className="card-header">
@@ -187,7 +205,7 @@ function Community({ animeTags = [] } = {}) {
                   ))}
                 </div>
                 <small style={{color: '#a0a0cc'}}>
-                  {Array.isArray(item.members) ? item.members.length : 0} membri
+                  {getCommunityMemberCount(item)} membri
                 </small>
               </div>
             </div>

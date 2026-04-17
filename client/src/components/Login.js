@@ -5,6 +5,9 @@ import './Auth.css';
 export default function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [twoFACode, setTwoFACode] = useState('');
+  const [requiresTwoFA, setRequiresTwoFA] = useState(false);
+  const [twoFAMethod, setTwoFAMethod] = useState('app');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -15,7 +18,15 @@ export default function Login({ onLoginSuccess }) {
     setIsLoading(true);
 
     try {
-      const data = await authService.login(email, password);
+      const data = await authService.login(email, password, requiresTwoFA ? twoFACode : '');
+
+      if (data.requiresTwoFA) {
+        setRequiresTwoFA(true);
+        setTwoFAMethod(data.method || 'app');
+        setError('Inserisci il codice 2FA del tuo autenticatore per completare l\'accesso');
+        return;
+      }
+
       onLoginSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message || 'Errore di login');
@@ -72,12 +83,31 @@ export default function Login({ onLoginSuccess }) {
             </div>
           </div>
 
+          {requiresTwoFA && (
+            <div className="form-group">
+              <label htmlFor="twoFACode">🔢 Codice 2FA</label>
+              <input
+                type="text"
+                id="twoFACode"
+                className="form-control"
+                placeholder={twoFAMethod === 'app' ? '123456' : 'Codice di verifica'}
+                value={twoFACode}
+                onChange={(e) => setTwoFACode(e.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required={requiresTwoFA}
+                disabled={isLoading}
+              />
+              <small className="text-muted">Apri la tua app autenticatore e inserisci il codice generato.</small>
+            </div>
+          )}
+
           <button
             type="submit"
             className="btn btn-primary auth-btn"
             disabled={isLoading}
           >
-            {isLoading ? '⏳ Accesso in corso...' : '✨ Accedi'}
+            {isLoading ? '⏳ Accesso in corso...' : requiresTwoFA ? '🔐 Verifica 2FA' : '✨ Accedi'}
           </button>
         </form>
 

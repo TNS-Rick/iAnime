@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const speakeasy = require('speakeasy');
 const { execute } = require('../db/connection');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change_me';
@@ -31,6 +32,28 @@ const signUserToken = (user) => {
 
 const hashPassword = async (password) => bcrypt.hash(password, 10);
 const comparePassword = async (password, hashedPassword) => bcrypt.compare(password, hashedPassword);
+
+const normalizeTwoFACode = (code) => String(code || '').replace(/\s+/g, '');
+
+const verifyTwoFACode = (secret, code) => {
+  if (!secret || !code) {
+    return false;
+  }
+
+  return speakeasy.totp.verify({
+    secret: String(secret).replace(/\s+/g, ''),
+    encoding: 'base32',
+    token: normalizeTwoFACode(code),
+    window: 1,
+  });
+};
+
+const generateTwoFASecret = (label) => {
+  return speakeasy.generateSecret({
+    name: label,
+    length: 20,
+  });
+};
 
 const getActiveUserById = async (id) => {
   const [rows] = await execute('SELECT * FROM users WHERE id = ? AND deletedAt IS NULL LIMIT 1', [id]);
@@ -64,8 +87,10 @@ const authenticateToken = async (req, res, next) => {
 module.exports = {
   authenticateToken,
   comparePassword,
+  generateTwoFASecret,
   getActiveUserById,
   hashPassword,
   sanitizeUser,
   signUserToken,
+  verifyTwoFACode,
 };

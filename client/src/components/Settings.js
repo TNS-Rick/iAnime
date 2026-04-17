@@ -14,7 +14,12 @@ export default function Settings() {
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
-  const [twoFAMethod, setTwoFAMethod] = useState('email');
+  const [twoFAMethod, setTwoFAMethod] = useState('app');
+  const [showTwoFASetup, setShowTwoFASetup] = useState(false);
+  const [twoFASetup, setTwoFASetup] = useState(null);
+  const [twoFACode, setTwoFACode] = useState('');
+  const [twoFAPassword, setTwoFAPassword] = useState('');
+  const [twoFAActionLoading, setTwoFAActionLoading] = useState(false);
   const [whoCanInvite, setWhoCanInvite] = useState('all');
   const [acceptStrangerMessages, setAcceptStrangerMessages] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
@@ -41,7 +46,7 @@ export default function Settings() {
     if (currentUser) {
       setEmail(currentUser.email || '');
       setTwoFAEnabled(currentUser.twoFAEnabled || false);
-      setTwoFAMethod(currentUser.twoFAMethod || 'email');
+      setTwoFAMethod(currentUser.twoFAMethod || 'app');
       setWhoCanInvite(currentUser.whoCanInvite || 'all');
       setAcceptStrangerMessages(currentUser.acceptStrangerMessages !== false);
       setIsPremium(currentUser.isPremium || false);
@@ -56,6 +61,20 @@ export default function Settings() {
       setVolume(currentUser.volume || 100);
     }
   }, []);
+
+  const refreshCurrentUser = async () => {
+    try {
+      authService.getToken();
+      const response = await authService.getCurrentUser();
+      if (response?.user) {
+        authService.setUser(response.user);
+        setTwoFAEnabled(response.user.twoFAEnabled || false);
+        setTwoFAMethod(response.user.twoFAMethod || 'app');
+      }
+    } catch (error) {
+      console.error('Unable to refresh current user:', error);
+    }
+  };
 
   // Save settings to API
   const saveSettings = async () => {
@@ -77,8 +96,6 @@ export default function Settings() {
           audioInputDevice: inputDevice,
           audioOutputDevice: outputDevice,
           volume,
-          twoFAEnabled,
-          twoFAMethod,
         }),
       });
 
@@ -89,9 +106,91 @@ export default function Settings() {
 
       setSuccessMessage('✅ Impostazioni salvate con successo!');
       setTimeout(() => setSuccessMessage(''), 3000);
+      await refreshCurrentUser();
     } catch (error) {
       setErrorMessage('❌ ' + error.message);
       setTimeout(() => setErrorMessage(''), 3000);
+    }
+  };
+
+  const startTwoFASetup = async () => {
+    try {
+      setErrorMessage('');
+      setSuccessMessage('');
+      setTwoFAActionLoading(true);
+      const data = await authService.setupTwoFA();
+      setTwoFASetup(data);
+      setTwoFACode('');
+      setShowTwoFASetup(true);
+    } catch (error) {
+      setErrorMessage('❌ ' + error.message);
+      setTimeout(() => setErrorMessage(''), 3000);
+    } finally {
+      setTwoFAActionLoading(false);
+    }
+  };
+
+  const confirmTwoFASetup = async () => {
+    if (!twoFASetup?.secret || !twoFACode.trim()) {
+      setErrorMessage('❌ Inserisci il codice generato dalla tua app autenticatore');
+      return;
+    }
+
+    try {
+      setErrorMessage('');
+      setSuccessMessage('');
+      setTwoFAActionLoading(true);
+      const data = await authService.confirmTwoFA(twoFASetup.secret, twoFACode);
+      if (data?.user) {
+        authService.setUser(data.user);
+      }
+      setTwoFAEnabled(true);
+      setTwoFAMethod('app');
+      setShowTwoFASetup(false);
+      setTwoFASetup(null);
+      setTwoFACode('');
+      setSuccessMessage('✅ 2FA attivato con successo!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setErrorMessage('❌ ' + error.message);
+      setTimeout(() => setErrorMessage(''), 3000);
+    } finally {
+      setTwoFAActionLoading(false);
+    }
+  };
+
+  const disableTwoFA = async () => {
+    if (!twoFAPassword.trim()) {
+      setErrorMessage('❌ Inserisci la password corrente per disattivare 2FA');
+      return;
+    }
+
+    if (twoFAEnabled && !twoFACode.trim()) {
+      setErrorMessage('❌ Inserisci il codice 2FA per disattivare la protezione');
+      return;
+    }
+
+    try {
+      setErrorMessage('');
+      setSuccessMessage('');
+      setTwoFAActionLoading(true);
+      const data = await authService.disableTwoFA(twoFAPassword, twoFACode);
+      if (data?.user) {
+        authService.setUser(data.user);
+      }
+      setTwoFAEnabled(false);
+      setTwoFAMethod('app');
+      setShowTwoFASetup(false);
+      setTwoFASetup(null);
+      setTwoFACode('');
+      setTwoFAPassword('');
+      setSuccessMessage('✅ 2FA disattivato con successo!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setErrorMessage('❌ ' + error.message);
+      setTimeout(() => setErrorMessage(''), 3000);
+    } finally {
+      setTwoFAActionLoading(false);
     }
   };
 
@@ -317,24 +416,104 @@ export default function Settings() {
               
               <div className="setting-group">
                 <label>Autenticazione a Due Fattori (2FA)</label>
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={twoFAEnabled}
-                    onChange={(e) => setTwoFAEnabled(e.target.checked)}
-                  />
-                  Abilita 2FA
-                </label>
+                <p className="text-muted">
+                  Usa un'app autenticatore per generare codici temporanei di accesso.
+                </p>
+                <div className="d-flex gap-2 flex-wrap">
+                  {!twoFAEnabled ? (
+                    <button
+                      className="btn btn-primary"
+                      onClick={startTwoFASetup}
+                      disabled={twoFAActionLoading}
+                    >
+                      {twoFAActionLoading ? '⏳ Preparazione...' : '🔐 Configura 2FA'}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-danger"
+                      onClick={disableTwoFA}
+                      disabled={twoFAActionLoading}
+                    >
+                      {twoFAActionLoading ? '⏳ Disattivazione...' : '🚫 Disattiva 2FA'}
+                    </button>
+                  )}
+                </div>
+
                 {twoFAEnabled && (
-                  <select 
-                    className="form-control mt-2"
-                    value={twoFAMethod}
-                    onChange={(e) => setTwoFAMethod(e.target.value)}
-                  >
-                    <option value="email">📧 Email</option>
-                    <option value="phone">📱 SMS & Telefono</option>
-                    <option value="app">🔐 App Autenticatore (Google/Microsoft)</option>
-                  </select>
+                  <small className="text-muted d-block mt-2">
+                    Stato: attivo con metodo {twoFAMethod === 'app' ? 'app autenticatore' : twoFAMethod}
+                  </small>
+                )}
+
+                {showTwoFASetup && twoFASetup && !twoFAEnabled && (
+                  <div className="mt-3 p-3" style={{ border: '1px solid rgba(0, 212, 255, 0.2)', borderRadius: '12px', background: 'rgba(0, 212, 255, 0.05)' }}>
+                    <h5 style={{ color: '#00d4ff' }}>Passo 1: scansiona il QR</h5>
+                    <p className="text-muted mb-2">Aggiungi l'account alla tua app autenticatore e poi inserisci il codice generato.</p>
+                    <div className="mb-3">
+                      <img
+                        src={twoFASetup.qrCodeDataUrl}
+                        alt="QR code 2FA"
+                        style={{ width: '220px', maxWidth: '100%', background: '#fff', padding: '8px', borderRadius: '12px' }}
+                      />
+                    </div>
+                    <p className="text-muted mb-2">
+                      Secret manuale: <strong style={{ color: '#00d4ff' }}>{twoFASetup.secret}</strong>
+                    </p>
+                    <div className="setting-group">
+                      <label>Codice di verifica</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={twoFACode}
+                        onChange={(e) => setTwoFACode(e.target.value)}
+                        placeholder="123456"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                      />
+                    </div>
+                    <button
+                      className="btn btn-primary"
+                      onClick={confirmTwoFASetup}
+                      disabled={twoFAActionLoading}
+                    >
+                      {twoFAActionLoading ? '⏳ Verifica...' : '✅ Conferma e attiva 2FA'}
+                    </button>
+                  </div>
+                )}
+
+                {twoFAEnabled && (
+                  <div className="mt-3 p-3" style={{ border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px' }}>
+                    <h5 style={{ color: '#ff6fa0' }}>Disattiva 2FA</h5>
+                    <div className="setting-group">
+                      <label>Password corrente</label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        value={twoFAPassword}
+                        onChange={(e) => setTwoFAPassword(e.target.value)}
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <div className="setting-group">
+                      <label>Codice 2FA corrente</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={twoFACode}
+                        onChange={(e) => setTwoFACode(e.target.value)}
+                        placeholder="123456"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                      />
+                    </div>
+                    <button
+                      className="btn btn-danger"
+                      onClick={disableTwoFA}
+                      disabled={twoFAActionLoading}
+                    >
+                      {twoFAActionLoading ? '⏳ Disattivazione...' : '🚫 Disattiva 2FA ora'}
+                    </button>
+                  </div>
                 )}
               </div>
 
