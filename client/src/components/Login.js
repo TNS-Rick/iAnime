@@ -8,6 +8,9 @@ export default function Login({ onLoginSuccess }) {
   const [twoFACode, setTwoFACode] = useState('');
   const [requiresTwoFA, setRequiresTwoFA] = useState(false);
   const [twoFAMethod, setTwoFAMethod] = useState('app');
+  const [challengeId, setChallengeId] = useState('');
+  const [destinationHint, setDestinationHint] = useState('');
+  const [devCodePreview, setDevCodePreview] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,12 +21,25 @@ export default function Login({ onLoginSuccess }) {
     setIsLoading(true);
 
     try {
-      const data = await authService.login(email, password, requiresTwoFA ? twoFACode : '');
+      const data = await authService.login(
+        email,
+        password,
+        requiresTwoFA ? twoFACode : '',
+        requiresTwoFA ? challengeId : ''
+      );
 
       if (data.requiresTwoFA) {
         setRequiresTwoFA(true);
         setTwoFAMethod(data.method || 'app');
-        setError('Inserisci il codice 2FA del tuo autenticatore per completare l\'accesso');
+        setChallengeId(data.challengeId || '');
+        setDestinationHint(data.destinationMasked || '');
+        setDevCodePreview(data.devCodePreview || '');
+        setError(
+          data.message ||
+            (data.method === 'app'
+              ? 'Inserisci il codice 2FA della tua app autenticatore'
+              : 'Inserisci il codice ricevuto per completare l\'accesso')
+        );
         return;
       }
 
@@ -90,7 +106,7 @@ export default function Login({ onLoginSuccess }) {
                 type="text"
                 id="twoFACode"
                 className="form-control"
-                placeholder={twoFAMethod === 'app' ? '123456' : 'Codice di verifica'}
+                placeholder={twoFAMethod === 'app' ? '123456' : 'Codice ricevuto'}
                 value={twoFACode}
                 onChange={(e) => setTwoFACode(e.target.value)}
                 inputMode="numeric"
@@ -98,7 +114,16 @@ export default function Login({ onLoginSuccess }) {
                 required={requiresTwoFA}
                 disabled={isLoading}
               />
-              <small className="text-muted">Apri la tua app autenticatore e inserisci il codice generato.</small>
+              <small className="text-muted">
+                {twoFAMethod === 'app'
+                  ? 'Apri la tua app autenticatore e inserisci il codice generato.'
+                  : `Controlla ${twoFAMethod === 'email' ? 'la tua email' : 'i tuoi SMS'}${destinationHint ? ` (${destinationHint})` : ''}.`}
+              </small>
+              {devCodePreview && (
+                <small className="text-warning d-block mt-1">
+                  Codice debug: {devCodePreview}
+                </small>
+              )}
             </div>
           )}
 

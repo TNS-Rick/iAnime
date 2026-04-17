@@ -1,5 +1,7 @@
 const express = require('express');
 const qrcode = require('qrcode');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const {
   authenticateToken,
   sanitizeUser,
@@ -7,11 +9,134 @@ const {
   comparePassword,
   signUserToken,
   generateTwoFASecret,
+  parseTwoFAConfig,
+  buildTwoFASecretPayload,
   verifyTwoFACode,
 } = require('./auth');
 const { User } = require('../models');
 
 const router = express.Router();
+const twoFAChallenges = new Map();
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+const generateNumericCode = () => String(Math.floor(100000 + Math.random() * 900000));
+const generateChallengeId = () => crypto.randomUUID();
+
+const maskEmail = (email = '') => {
+  const [localPart, domain] = String(email).split('@');
+  if (!localPart || !domain) {
+    return email;
+  }
+
+  if (localPart.length <= 2) {
+    return `${localPart[0] || '*'}*@${domain}`;
+  }
+
+  return `${localPart[0]}${'*'.repeat(Math.max(1, localPart.length - 2))}${localPart[localPart.length - 1]}@${domain}`;
+};
+
+const maskPhone = (phoneNumber = '') => {
+  const clean = String(phoneNumber).replace(/\s+/g, '');
+  if (clean.length <= 4) {
+    return clean;
+  }
+
+  return `${'*'.repeat(clean.length - 4)}${clean.slice(-4)}`;
+};
+
+const cleanupChallenges = () => {
+  const now = Date.now();
+  for (const [challengeId, challenge] of twoFAChallenges.entries()) {
+    if (!challenge || challenge.expiresAt < now) {
+      twoFAChallenges.delete(challengeId);
+    }
+  }
+};
+
+const createChallenge = ({ userId, purpose, method, destination, phoneNumber = null }) => {
+  cleanupChallenges();
+
+  const challengeId = generateChallengeId();
+  const code = generateNumericCode();
+  const expiresAt = Date.now() + CHALLENGE_TTL_MS;
+
+  twoFAChallenges.set(challengeId, {
+    userId,
+    purpose,
+    method,
+    destination,
+    phoneNumber,
+    code,
+    expiresAt,
+  });
+
+  return {
+    challengeId,
+    code,
+    expiresAt,
+    expiresInSeconds: Math.floor(CHALLENGE_TTL_MS / 1000),
+  };
+};
+
+const getChallenge = (challengeId, expectedPurpose) => {
+  cleanupChallenges();
+  const challenge = twoFAChallenges.get(challengeId);
+
+  if (!challenge || challenge.purpose !== expectedPurpose) {
+    return null;
+  }
+
+  if (challenge.expiresAt < Date.now()) {
+    twoFAChallenges.delete(challengeId);
+    return null;
+  }
+
+  return challenge;
+};
+
+const consumeChallenge = (challengeId) => {
+  twoFAChallenges.delete(challengeId);
+};
+
+const sendTwoFACode = async ({ method, destination, code }) => {
+  const devPreview = process.env.NODE_ENV !== 'production' ? code : undefined;
+
+  if (method === 'email') {
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || 'no-reply@ianime.local',
+        to: destination,
+        subject: 'Codice 2FA iAnime',
+        text: `Il tuo codice di verifica e: ${code}`,
+      });
+
+      return { delivered: true, devPreview };
+    }
+
+    throw new Error(
+      'Email 2FA non configurato: imposta SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e SMTP_FROM nel file .env del server'
+    );
+  }
+
+  if (method === 'phone') {
+    // SMS provider integration can be plugged in here (Twilio, MessageBird, etc.).
+    console.log(`[2FA SMS DEBUG] codice per ${destination}: ${code}`);
+    return { delivered: false, devPreview };
+  }
+
+  return { delivered: false, devPreview };
+};
 
 // Register endpoint
 router.post('/v1/auth/register', async (req, res, next) => {
@@ -61,7 +186,7 @@ router.post('/v1/auth/register', async (req, res, next) => {
 // Login endpoint
 router.post('/v1/auth/login', async (req, res, next) => {
   try {
-    const { email, password, twoFACode } = req.body;
+    const { email, password, twoFACode, challengeId } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email e password sono obbligatori' });
@@ -78,22 +203,72 @@ router.post('/v1/auth/login', async (req, res, next) => {
     }
 
     if (user.twoFAEnabled) {
-      if (!user.twoFASecret) {
+      const twoFAConfig = parseTwoFAConfig(user);
+      const method = twoFAConfig.method || user.twoFAMethod || 'app';
+
+      if (method === 'app' && !twoFAConfig.secret) {
         return res.status(500).json({ error: '2FA configurato in modo non valido' });
       }
 
-      if (!twoFACode) {
-        return res.json({
-          requiresTwoFA: true,
-          method: user.twoFAMethod || 'app',
-          message: 'Inserisci il codice 2FA per completare l\'accesso',
-        });
+      if (method === 'app') {
+        if (!twoFACode) {
+          return res.json({
+            requiresTwoFA: true,
+            method: 'app',
+            message: 'Inserisci il codice 2FA per completare l\'accesso',
+          });
+        }
+
+        const isValidTwoFA = verifyTwoFACode(twoFAConfig.secret, twoFACode);
+        if (!isValidTwoFA) {
+          return res.status(401).json({ error: 'Codice 2FA non valido' });
+        }
+      } else {
+        const destination = method === 'email' ? user.email : twoFAConfig.phoneNumber;
+
+        if (!destination) {
+          return res.status(500).json({ error: 'Metodo 2FA configurato in modo non valido' });
+        }
+
+        if (!twoFACode || !challengeId) {
+          const newChallenge = createChallenge({
+            userId: user.id,
+            purpose: 'login',
+            method,
+            destination,
+            phoneNumber: twoFAConfig.phoneNumber,
+          });
+
+          const deliveryInfo = await sendTwoFACode({
+            method,
+            destination,
+            code: newChallenge.code,
+          });
+
+          return res.json({
+            requiresTwoFA: true,
+            method,
+            challengeId: newChallenge.challengeId,
+            expiresInSeconds: newChallenge.expiresInSeconds,
+            destinationMasked: method === 'email' ? maskEmail(destination) : maskPhone(destination),
+            deliveryFallback: !deliveryInfo.delivered,
+            ...(deliveryInfo.devPreview ? { devCodePreview: deliveryInfo.devPreview } : {}),
+            message: `Inserisci il codice ${method === 'email' ? 'ricevuto via email' : 'ricevuto via SMS'} per completare l'accesso`,
+          });
+        }
+
+        const challenge = getChallenge(challengeId, 'login');
+        if (!challenge || challenge.userId !== user.id || challenge.method !== method) {
+          return res.status(401).json({ error: 'Challenge 2FA non valido o scaduto' });
+        }
+
+        if (String(challenge.code) !== String(twoFACode).trim()) {
+          return res.status(401).json({ error: 'Codice 2FA non valido' });
+        }
+
+        consumeChallenge(challengeId);
       }
 
-      const isValidTwoFA = verifyTwoFACode(user.twoFASecret, twoFACode);
-      if (!isValidTwoFA) {
-        return res.status(401).json({ error: 'Codice 2FA non valido' });
-      }
     }
 
     const token = signUserToken(user);
@@ -109,45 +284,130 @@ router.post('/v1/auth/login', async (req, res, next) => {
   }
 });
 
-// 2FA setup - generate a secret and QR code for authenticator apps
-router.get('/v1/auth/2fa/setup', authenticateToken, async (req, res, next) => {
+// Start 2FA setup for app/email/phone.
+router.post('/v1/auth/2fa/setup/start', authenticateToken, async (req, res, next) => {
   try {
+    const { method, phoneNumber } = req.body;
+    const selectedMethod = String(method || '').toLowerCase();
+
+    if (!['app', 'email', 'phone'].includes(selectedMethod)) {
+      return res.status(400).json({ error: 'Metodo 2FA non valido. Usa app, email o phone' });
+    }
+
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'Utente non trovato' });
     }
 
-    const secret = generateTwoFASecret(`iAnime (${user.email})`);
-    const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url);
+    if (selectedMethod === 'app') {
+      const secret = generateTwoFASecret(`iAnime (${user.email})`);
+      const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url);
 
-    res.json({
-      method: 'app',
-      secret: secret.base32,
-      otpauthUrl: secret.otpauth_url,
-      qrCodeDataUrl,
+      return res.json({
+        method: 'app',
+        secret: secret.base32,
+        otpauthUrl: secret.otpauth_url,
+        qrCodeDataUrl,
+      });
+    }
+
+    if (selectedMethod === 'phone' && !String(phoneNumber || '').trim()) {
+      return res.status(400).json({ error: 'Inserisci un numero di telefono valido' });
+    }
+
+    const destination = selectedMethod === 'email' ? user.email : String(phoneNumber || '').trim();
+    const newChallenge = createChallenge({
+      userId: user.id,
+      purpose: 'setup',
+      method: selectedMethod,
+      destination,
+      phoneNumber: selectedMethod === 'phone' ? destination : null,
+    });
+
+    let deliveryInfo;
+    try {
+      deliveryInfo = await sendTwoFACode({
+        method: selectedMethod,
+        destination,
+        code: newChallenge.code,
+      });
+    } catch (mailError) {
+      twoFAChallenges.delete(newChallenge.challengeId);
+      return res.status(503).json({ error: mailError.message });
+    }
+
+    return res.json({
+      method: selectedMethod,
+      challengeId: newChallenge.challengeId,
+      expiresInSeconds: newChallenge.expiresInSeconds,
+      destinationMasked: selectedMethod === 'email' ? maskEmail(destination) : maskPhone(destination),
+      deliveryFallback: !deliveryInfo.delivered,
+      ...(deliveryInfo.devPreview ? { devCodePreview: deliveryInfo.devPreview } : {}),
+      message: `Codice di verifica inviato tramite ${selectedMethod === 'email' ? 'email' : 'SMS'}`,
     });
   } catch (error) {
     next(error);
   }
 });
 
-// 2FA confirm - verify the code and persist the shared secret
-router.post('/v1/auth/2fa/confirm', authenticateToken, async (req, res, next) => {
+// Confirm 2FA setup and persist configuration.
+router.post('/v1/auth/2fa/setup/confirm', authenticateToken, async (req, res, next) => {
   try {
-    const { secret, code } = req.body;
+    const { method, secret, code, challengeId, phoneNumber } = req.body;
+    const selectedMethod = String(method || '').toLowerCase();
 
-    if (!secret || !code) {
-      return res.status(400).json({ error: 'Secret e codice 2FA sono obbligatori' });
+    if (!['app', 'email', 'phone'].includes(selectedMethod)) {
+      return res.status(400).json({ error: 'Metodo 2FA non valido. Usa app, email o phone' });
     }
 
-    if (!verifyTwoFACode(secret, code)) {
+    if (selectedMethod === 'app') {
+      if (!secret || !code) {
+        return res.status(400).json({ error: 'Secret e codice 2FA sono obbligatori' });
+      }
+
+      if (!verifyTwoFACode(secret, code)) {
+        return res.status(400).json({ error: 'Codice 2FA non valido' });
+      }
+
+      const updatedUser = await User.update(req.user.id, {
+        twoFAEnabled: true,
+        twoFAMethod: 'app',
+        twoFASecret: buildTwoFASecretPayload({ method: 'app', secret }),
+      });
+
+      return res.json({
+        message: '2FA attivato con successo',
+        user: sanitizeUser(updatedUser),
+      });
+    }
+
+    if (!challengeId || !code) {
+      return res.status(400).json({ error: 'Challenge e codice 2FA sono obbligatori' });
+    }
+
+    const challenge = getChallenge(challengeId, 'setup');
+    if (!challenge || challenge.userId !== req.user.id || challenge.method !== selectedMethod) {
+      return res.status(400).json({ error: 'Challenge 2FA non valido o scaduto' });
+    }
+
+    if (String(challenge.code) !== String(code).trim()) {
       return res.status(400).json({ error: 'Codice 2FA non valido' });
     }
 
+    consumeChallenge(challengeId);
+
+    const resolvedPhone = selectedMethod === 'phone'
+      ? String(phoneNumber || challenge.phoneNumber || '').trim()
+      : null;
+
     const updatedUser = await User.update(req.user.id, {
       twoFAEnabled: true,
-      twoFAMethod: 'app',
-      twoFASecret: secret,
+      twoFAMethod: selectedMethod,
+      twoFASecret: buildTwoFASecretPayload({
+        method: selectedMethod,
+        secret: null,
+        phoneNumber: resolvedPhone,
+      }),
     });
 
     res.json({
@@ -162,7 +422,7 @@ router.post('/v1/auth/2fa/confirm', authenticateToken, async (req, res, next) =>
 // 2FA disable - confirm with password and current 2FA code if enabled
 router.post('/v1/auth/2fa/disable', authenticateToken, async (req, res, next) => {
   try {
-    const { password, twoFACode } = req.body;
+    const { password, twoFACode, challengeId } = req.body;
 
     if (!password) {
       return res.status(400).json({ error: 'La password corrente è obbligatoria' });
@@ -178,9 +438,63 @@ router.post('/v1/auth/2fa/disable', authenticateToken, async (req, res, next) =>
       return res.status(401).json({ error: 'Password non valida' });
     }
 
-    if (user.twoFAEnabled && user.twoFASecret) {
-      if (!twoFACode || !verifyTwoFACode(user.twoFASecret, twoFACode)) {
-        return res.status(401).json({ error: 'Codice 2FA non valido' });
+    if (user.twoFAEnabled) {
+      const twoFAConfig = parseTwoFAConfig(user);
+      const method = twoFAConfig.method || user.twoFAMethod || 'app';
+
+      if (method === 'app') {
+        if (!twoFACode || !verifyTwoFACode(twoFAConfig.secret, twoFACode)) {
+          return res.status(401).json({ error: 'Codice 2FA non valido' });
+        }
+      } else {
+        const destination = method === 'email' ? user.email : twoFAConfig.phoneNumber;
+        if (!destination) {
+          return res.status(500).json({ error: 'Metodo 2FA configurato in modo non valido' });
+        }
+
+        if (!challengeId || !twoFACode) {
+          const newChallenge = createChallenge({
+            userId: user.id,
+            purpose: 'disable',
+            method,
+            destination,
+            phoneNumber: twoFAConfig.phoneNumber,
+          });
+
+          let deliveryInfo;
+          try {
+            deliveryInfo = await sendTwoFACode({
+              method,
+              destination,
+              code: newChallenge.code,
+            });
+          } catch (mailError) {
+            twoFAChallenges.delete(newChallenge.challengeId);
+            return res.status(503).json({ error: mailError.message });
+          }
+
+          return res.status(401).json({
+            requiresTwoFA: true,
+            method,
+            challengeId: newChallenge.challengeId,
+            expiresInSeconds: newChallenge.expiresInSeconds,
+            destinationMasked: method === 'email' ? maskEmail(destination) : maskPhone(destination),
+            deliveryFallback: !deliveryInfo.delivered,
+            ...(deliveryInfo.devPreview ? { devCodePreview: deliveryInfo.devPreview } : {}),
+            error: 'Inserisci il codice 2FA per completare la disattivazione',
+          });
+        }
+
+        const challenge = getChallenge(challengeId, 'disable');
+        if (!challenge || challenge.userId !== user.id || challenge.method !== method) {
+          return res.status(401).json({ error: 'Challenge 2FA non valido o scaduto' });
+        }
+
+        if (String(challenge.code) !== String(twoFACode).trim()) {
+          return res.status(401).json({ error: 'Codice 2FA non valido' });
+        }
+
+        consumeChallenge(challengeId);
       }
     }
 

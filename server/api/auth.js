@@ -35,6 +35,49 @@ const comparePassword = async (password, hashedPassword) => bcrypt.compare(passw
 
 const normalizeTwoFACode = (code) => String(code || '').replace(/\s+/g, '');
 
+const parseTwoFAConfig = (user = {}) => {
+  const method = user.twoFAMethod || 'app';
+  const stored = user.twoFASecret;
+
+  if (!stored) {
+    return { method, secret: null, phoneNumber: null };
+  }
+
+  if (typeof stored === 'object' && stored !== null) {
+    return {
+      method: stored.method || method,
+      secret: stored.secret || null,
+      phoneNumber: stored.phoneNumber || null,
+    };
+  }
+
+  if (typeof stored === 'string') {
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          method: parsed.method || method,
+          secret: parsed.secret || null,
+          phoneNumber: parsed.phoneNumber || null,
+        };
+      }
+    } catch {
+      // Fallback for legacy values where the raw base32 secret was stored directly.
+      return { method: 'app', secret: stored, phoneNumber: null };
+    }
+  }
+
+  return { method, secret: null, phoneNumber: null };
+};
+
+const buildTwoFASecretPayload = ({ method, secret = null, phoneNumber = null }) => {
+  return JSON.stringify({
+    method,
+    secret,
+    phoneNumber,
+  });
+};
+
 const verifyTwoFACode = (secret, code) => {
   if (!secret || !code) {
     return false;
@@ -90,7 +133,9 @@ module.exports = {
   generateTwoFASecret,
   getActiveUserById,
   hashPassword,
+  parseTwoFAConfig,
   sanitizeUser,
   signUserToken,
+  buildTwoFASecretPayload,
   verifyTwoFACode,
 };

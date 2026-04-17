@@ -22,6 +22,17 @@ L'autorizzazione dipende dall'utente autenticato e dai permessi nella community.
 
 Il backend supporta solo MySQL/MariaDB, non MongoDB.
 
+Per la verifica 2FA via email devi configurare anche SMTP nel file `.env` del server:
+
+- `SMTP_HOST=smtp.tuoprovider.com`
+- `SMTP_PORT=587`
+- `SMTP_SECURE=false`
+- `SMTP_USER=tuo_utente_smtp`
+- `SMTP_PASS=tua_password_smtp`
+- `SMTP_FROM=no-reply@ianime.local`
+
+Se queste variabili mancano, la setup 2FA email risponderà con un errore esplicito invece di non inviare nulla.
+
 1. Avvia MySQL da XAMPP Control Panel.
 2. Configura il file `.env` in `server/` con:
 	- `DB_HOST=localhost`

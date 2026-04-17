@@ -3,7 +3,7 @@
 
 import io from 'socket.io-client';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 let socket = null;
 let authToken = null;
 
@@ -26,7 +26,9 @@ const apiCall = async (method, endpoint, body = null) => {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || `API error: ${response.status}`);
+    const err = new Error(error.error || `API error: ${response.status}`);
+    Object.assign(err, error);
+    throw err;
   }
 
   return response.json();
@@ -40,20 +42,20 @@ export const authService = {
     apiCall('POST', '/v1/auth/register', { email, password, username }),
 
   // Login
-  login: (email, password, twoFACode = '') =>
-    apiCall('POST', '/v1/auth/login', { email, password, twoFACode }),
+  login: (email, password, twoFACode = '', challengeId = '') =>
+    apiCall('POST', '/v1/auth/login', { email, password, twoFACode, challengeId }),
 
-  // 2FA setup
-  setupTwoFA: () =>
-    apiCall('GET', '/v1/auth/2fa/setup'),
+  // Start 2FA setup
+  setupTwoFA: (method, phoneNumber = '') =>
+    apiCall('POST', '/v1/auth/2fa/setup/start', { method, phoneNumber }),
 
   // Confirm 2FA setup
-  confirmTwoFA: (secret, code) =>
-    apiCall('POST', '/v1/auth/2fa/confirm', { secret, code }),
+  confirmTwoFA: ({ method, secret, code, challengeId, phoneNumber }) =>
+    apiCall('POST', '/v1/auth/2fa/setup/confirm', { method, secret, code, challengeId, phoneNumber }),
 
   // Disable 2FA
-  disableTwoFA: (password, twoFACode = '') =>
-    apiCall('POST', '/v1/auth/2fa/disable', { password, twoFACode }),
+  disableTwoFA: (password, twoFACode = '', challengeId = '') =>
+    apiCall('POST', '/v1/auth/2fa/disable', { password, twoFACode, challengeId }),
 
   // Get current user
   getCurrentUser: () =>

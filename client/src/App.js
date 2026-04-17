@@ -6,6 +6,7 @@ import Community from './components/Community';
 import MerchSuggestions from './components/MerchSuggestions';
 import AnimeDetail from './components/AnimeDetail';
 import Settings from './components/Settings';
+import TwoFactorSetup from './components/TwoFactorSetup';
 import SocialDashboard from './components/SocialDashboard';
 import CommunityDashboard from './components/CommunityDashboard';
 import TestPage from './components/TestPage';
@@ -198,6 +199,7 @@ function App() {
           <Route path="/community/:communityId" element={<CommunityDashboard />} />
           <Route path="/social" element={<SocialDashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/settings/2fa" element={<TwoFactorSetup />} />
           <Route path="/test" element={<TestPage />} />
         </Routes>
       </div>
