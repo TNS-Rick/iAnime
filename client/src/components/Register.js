@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { authService } from '../services/api';
+import { generateAndStoreKeyPair } from '../services/crypto';
 import './Auth.css';
 
 export default function Register({ onRegisterSuccess }) {
@@ -44,10 +45,14 @@ export default function Register({ onRegisterSuccess }) {
     setIsLoading(true);
 
     try {
+      // Generate E2EE keypair and send public key to server during registration
+      const publicKey = await generateAndStoreKeyPair();
+
       const data = await authService.register(
         formData.email,
         formData.password,
-        formData.username
+        formData.username,
+        publicKey
       );
       onRegisterSuccess(data.user, data.token);
     } catch (err) {

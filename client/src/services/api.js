@@ -38,8 +38,8 @@ const apiCall = async (method, endpoint, body = null) => {
 
 export const authService = {
   // Register new user
-  register: (email, password, username) =>
-    apiCall('POST', '/v1/auth/register', { email, password, username }),
+  register: (email, password, username, publicKey = null) =>
+    apiCall('POST', '/v1/auth/register', { email, password, username, publicKey }),
 
   // Login
   login: (email, password, twoFACode = '', challengeId = '') =>

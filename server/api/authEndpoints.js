@@ -141,7 +141,7 @@ const sendTwoFACode = async ({ method, destination, code }) => {
 // Register endpoint
 router.post('/v1/auth/register', async (req, res, next) => {
   try {
-    const { email, password, username } = req.body;
+    const { email, password, username, publicKey } = req.body;
 
     if (!email || !password || !username) {
       return res.status(400).json({ error: 'Email, password, and username sono obbligatori' });
@@ -168,6 +168,7 @@ router.post('/v1/auth/register', async (req, res, next) => {
       email,
       password: hashedPassword,
       username,
+      publicKey: publicKey || null,
     });
 
     const token = signUserToken(user);
@@ -529,7 +530,7 @@ router.get('/v1/auth/me', authenticateToken, async (req, res) => {
 // Update profile
 router.put('/v1/auth/profile', authenticateToken, async (req, res, next) => {
   try {
-    const allowedUpdates = ['bio', 'profileImage', 'displayNameColor', 'theme', 'displayMode', 'language', 'colorblindMode', 'highContrast', 'textSize', 'audioInputDevice', 'audioOutputDevice', 'volume', 'twoFAEnabled', 'twoFAMethod', 'whoCanInvite', 'acceptStrangerMessages'];
+    const allowedUpdates = ['bio', 'profileImage', 'displayNameColor', 'theme', 'displayMode', 'language', 'colorblindMode', 'highContrast', 'textSize', 'audioInputDevice', 'audioOutputDevice', 'volume', 'twoFAEnabled', 'twoFAMethod', 'whoCanInvite', 'acceptStrangerMessages', 'publicKey'];
     const updates = {};
 
     // Validation rules for specific fields

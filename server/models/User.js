@@ -21,6 +21,7 @@ const normalizeUser = (row) => {
     email: row.email,
     password: row.password,
     username: row.username,
+    publicKey: row.publicKey || null,
     bio: row.bio || '',
     profileImage: row.profileImage || '',
     displayNameColor: row.displayNameColor || '#000000',
@@ -81,6 +82,7 @@ module.exports = {
       friendsList = [],
       blockedUsers = [],
       communities = [],
+      publicKey = null,
     } = userData;
 
     const sql = `
@@ -88,7 +90,7 @@ module.exports = {
         email, password, username, bio, profileImage, displayNameColor,
         profileFrameStyle, theme, displayMode, language, notifications,
         isPremium, premiumExpiresAt, billingMethod, twoFAEnabled, twoFAMethod,
-        twoFASecret, whoCanInvite, acceptStrangerMessages, friendsList, blockedUsers, communities
+        twoFASecret, publicKey, whoCanInvite, acceptStrangerMessages, friendsList, blockedUsers, communities
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
@@ -110,6 +112,7 @@ module.exports = {
       twoFAEnabled ? 1 : 0,
       twoFAMethod,
       twoFASecret,
+      publicKey,
       whoCanInvite,
       acceptStrangerMessages ? 1 : 0,
       JSON.stringify(friendsList),
@@ -150,7 +153,7 @@ module.exports = {
       'bio', 'profileImage', 'displayNameColor', 'profileFrameStyle',
       'theme', 'displayMode', 'language', 'notifications', 'isPremium',
       'premiumExpiresAt', 'billingMethod', 'twoFAEnabled', 'twoFAMethod',
-      'twoFASecret', 'whoCanInvite', 'acceptStrangerMessages', 'friendsList',
+      'twoFASecret', 'publicKey', 'whoCanInvite', 'acceptStrangerMessages', 'friendsList',
       'blockedUsers', 'communities', 'colorblindMode', 'highContrast',
       'textSize', 'audioInputDevice', 'audioOutputDevice', 'volume',
     ];

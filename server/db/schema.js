@@ -18,6 +18,7 @@ const schemaStatements = [
     twoFAEnabled TINYINT(1) NOT NULL DEFAULT 0,
     twoFAMethod ENUM('phone', 'email', 'app') NULL,
     twoFASecret VARCHAR(255) NULL,
+    publicKey TEXT NULL,
     whoCanInvite ENUM('all', 'friends', 'none') NOT NULL DEFAULT 'all',
     acceptStrangerMessages TINYINT(1) NOT NULL DEFAULT 0,
     friendsList JSON NOT NULL,

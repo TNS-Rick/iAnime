@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService, socketService } from '../services/api';
+import { getStoredPrivateJwk, deriveSharedKey, encryptWithSharedKey, decryptWithSharedKey } from '../services/crypto';
 
 export default function SocialDashboard() {
   const navigate = useNavigate();
@@ -62,10 +63,38 @@ export default function SocialDashboard() {
         socketService.connect(currentUser.id);
       }
 
-      // Listen for incoming DMs
+      // Listen for incoming DMs (attempt decrypt using our private key)
       socketService.onDM((data) => {
         if (data.message) {
-          setChatMessages(prev => sortMessagesChronologically([...prev, data.message]));
+          (async () => {
+            const msg = data.message;
+            const privateJwk = getStoredPrivateJwk();
+
+            try {
+              const senderId = msg.author?.id;
+              let senderPublicKey = null;
+
+              if (senderId) {
+                const res = await fetch(`/api/v1/users/${senderId}`);
+                if (res.ok) {
+                  const json = await res.json();
+                  senderPublicKey = json.user?.publicKey || null;
+                }
+              }
+
+              if (privateJwk && senderPublicKey) {
+                const shared = await deriveSharedKey(privateJwk, senderPublicKey);
+                const decrypted = await decryptWithSharedKey(shared, msg.content);
+                if (decrypted !== null) {
+                  msg.content = decrypted;
+                }
+              }
+            } catch (e) {
+              // Ignore decryption errors and keep original content
+            }
+
+            setChatMessages(prev => sortMessagesChronologically([...prev, msg]));
+          })();
         }
       });
     }
@@ -304,7 +333,29 @@ export default function SocialDashboard() {
     if (!newMessage.trim() || !selectedUser) return;
 
     try {
-      // POST /api/v1/direct-messages
+      // Encrypt message for recipient if possible
+      let contentToSend = newMessage.trim();
+      try {
+        const privateJwk = getStoredPrivateJwk();
+        let recipientPublicKey = selectedUser.publicKey;
+        if (!recipientPublicKey) {
+          const r = await fetch(`/api/v1/users/${selectedUser.id}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (r.ok) {
+            const jr = await r.json();
+            recipientPublicKey = jr.user?.publicKey;
+          }
+        }
+
+        if (privateJwk && recipientPublicKey) {
+          const shared = await deriveSharedKey(privateJwk, recipientPublicKey);
+          const encrypted = await encryptWithSharedKey(shared, newMessage.trim());
+          contentToSend = encrypted;
+        }
+      } catch (e) {
+        // fall back to plaintext if encryption fails
+        console.warn('E2EE encrypt failed, sending plaintext');
+      }
+
       const response = await fetch('/api/v1/direct-messages', {
         method: 'POST',
         headers: {
@@ -313,7 +364,7 @@ export default function SocialDashboard() {
         },
         body: JSON.stringify({
           recipientId: selectedUser.id,
-          content: newMessage.trim(),
+          content: contentToSend,
         }),
       });
 
