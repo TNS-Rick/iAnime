@@ -25,7 +25,7 @@ const normalizeUser = (row) => {
     bio: row.bio || '',
     profileImage: row.profileImage || '',
     displayNameColor: row.displayNameColor || '#000000',
-    profileFrameStyle: row.profileFrameStyle || 'default',
+    profileFrameStyle: row.profileFrameStyle || 'none',
     theme: row.theme || 'auto',
     displayMode: row.displayMode || 'light',
     language: row.language || 'it',
@@ -66,7 +66,7 @@ module.exports = {
       bio = '',
       profileImage = '',
       displayNameColor = '#000000',
-      profileFrameStyle = 'default',
+      profileFrameStyle = 'none',
       theme = 'auto',
       displayMode = 'light',
       language = 'it',
@@ -91,7 +91,7 @@ module.exports = {
         profileFrameStyle, theme, displayMode, language, notifications,
         isPremium, premiumExpiresAt, billingMethod, twoFAEnabled, twoFAMethod,
         twoFASecret, publicKey, whoCanInvite, acceptStrangerMessages, friendsList, blockedUsers, communities
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await execute(sql, [
@@ -150,6 +150,7 @@ module.exports = {
 
   async update(id, updates) {
     const allowedFields = [
+      'username', 'lastUsernameChange',
       'bio', 'profileImage', 'displayNameColor', 'profileFrameStyle',
       'theme', 'displayMode', 'language', 'notifications', 'isPremium',
       'premiumExpiresAt', 'billingMethod', 'twoFAEnabled', 'twoFAMethod',
@@ -166,7 +167,12 @@ module.exports = {
 
       fields.push(`${key} = ?`);
 
-      if (typeof value === 'object' && !['isPremium', 'twoFAEnabled', 'acceptStrangerMessages', 'highContrast'].includes(key)) {
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        !(value instanceof Date) &&
+        !['isPremium', 'twoFAEnabled', 'acceptStrangerMessages', 'highContrast'].includes(key)
+      ) {
         values.push(JSON.stringify(value));
       } else if (typeof value === 'boolean') {
         values.push(value ? 1 : 0);

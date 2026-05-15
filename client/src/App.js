@@ -1,5 +1,4 @@
-
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import AnimeSearch from './components/AnimeSearch';
 import Community from './components/Community';
@@ -12,6 +11,7 @@ import CommunityDashboard from './components/CommunityDashboard';
 import TestPage from './components/TestPage';
 import Login from './components/Login';
 import Register from './components/Register';
+import ProfileSettingsWrapper from './components/ProfileSettingsWrapper';
 import { authService, socketService } from './services/api';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './index.css';
@@ -22,7 +22,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
 
-  // Verifica la sessione al caricamento dell'app
   useEffect(() => {
     const verifySession = async () => {
       const savedToken = authService.getToken();
@@ -33,7 +32,6 @@ function App() {
           authService.setUser(response.user);
           setUser(response.user);
           setToken(savedToken);
-          // Connetti Socket.io
           socketService.connect(response.user.id);
         } catch (error) {
           console.log('Token non valido, effettua login');
@@ -45,7 +43,6 @@ function App() {
 
     verifySession();
 
-    // Event listeners per switch tra login e register
     const handleShowRegister = () => setShowRegister(true);
     const handleShowLogin = () => setShowRegister(false);
 
@@ -64,7 +61,6 @@ function App() {
     authService.setUser(userData);
     setUser(userData);
     setToken(userToken);
-    // Connetti Socket.io
     socketService.connect(userData.id);
   };
 
@@ -77,21 +73,22 @@ function App() {
 
   if (isLoading) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #050812 0%, #1a0033 100%)',
-        color: '#00d4ff',
-        fontSize: '1.2rem'
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #050812 0%, #1a0033 100%)',
+          color: '#00d4ff',
+          fontSize: '1.2rem',
+        }}
+      >
         ⏳ Caricamento...
       </div>
     );
   }
 
-  // Se l'utente non è autenticato, mostra login/register
   if (!user || !token) {
     return (
       <Router>
@@ -104,7 +101,6 @@ function App() {
     );
   }
 
-  // Se l'utente è autenticato, mostra l'app
   return (
     <Router>
       <nav className="navbar navbar-expand-lg navbar-dark">
@@ -112,10 +108,10 @@ function App() {
           <a className="navbar-brand" href="/">
             ⚡ iAnime
           </a>
-          <button 
-            className="navbar-toggler" 
-            type="button" 
-            data-bs-toggle="collapse" 
+          <button
+            className="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
             data-bs-target="#navbarNav"
           >
             <span className="navbar-toggler-icon"></span>
@@ -123,33 +119,50 @@ function App() {
           <div className="collapse navbar-collapse" id="navbarNav">
             <ul className="navbar-nav ms-auto">
               <li className="nav-item">
-                <a className="nav-link" href="/">Scopri</a>
+                <a className="nav-link" href="/">
+                  Scopri
+                </a>
               </li>
               <li className="nav-item">
-                <a className="nav-link" href="/community">Community</a>
+                <a className="nav-link" href="/community">
+                  Community
+                </a>
               </li>
               <li className="nav-item">
-                <a className="nav-link" href="/social">👥 Social</a>
+                <a className="nav-link" href="/social">
+                  👥 Social
+                </a>
               </li>
               <li className="nav-item">
-                <a className="nav-link" href="/#merch">Merchandising</a>
+                <a className="nav-link" href="/#merch">
+                  Merchandising
+                </a>
               </li>
               <li className="nav-item">
-                <a className="nav-link" href="/settings">⚙️ Impostazioni</a>
+                <a className="nav-link" href="/settings">
+                  ⚙️ Impostazioni
+                </a>
               </li>
               <li className="nav-item">
-                <a className="nav-link" href="/test">🧪 Test</a>
+                <a className="nav-link" href="/test">
+                  🧪 Test
+                </a>
               </li>
               <li className="nav-item">
-                <span className="nav-link" style={{color: '#00d4ff'}}>
+                <Link
+                  className="nav-link"
+                  to="/profile/settings"
+                  style={{ color: '#00d4ff', cursor: 'pointer' }}
+                  title="Apri impostazioni profilo"
+                >
                   👤 {user.username}
-                </span>
+                </Link>
               </li>
               <li className="nav-item">
-                <button 
+                <button
                   className="nav-link"
                   onClick={handleLogout}
-                  style={{background: 'none', border: 'none', cursor: 'pointer'}}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}
                 >
                   🚪 Logout
                 </button>
@@ -162,44 +175,60 @@ function App() {
       <div className="main-container">
         <section className="hero-section">
           <h1>iAnime</h1>
-          <p>Scopri anime, unisciti alla community globale e trova merchandising esclusivo in un'unica piattaforma futuristica</p>
+          <p>
+            Scopri anime, unisciti alla community globale e trova merchandising esclusivo in un'unica
+            piattaforma futuristica
+          </p>
         </section>
 
         <Routes>
-          <Route path="/" element={
-            <>
-              <section>
-                <h2 className="text-primary mb-4" style={{fontSize: '1.8rem', fontWeight: 'bold'}}>
-                  🔍 Ricerca Anime
-                </h2>
-                <AnimeSearch />
-              </section>
+          <Route
+            path="/"
+            element={
+              <>
+                <section>
+                  <h2
+                    className="text-primary mb-4"
+                    style={{ fontSize: '1.8rem', fontWeight: 'bold' }}
+                  >
+                    🔍 Ricerca Anime
+                  </h2>
+                  <AnimeSearch />
+                </section>
 
-              <hr />
+                <hr />
 
-              <section id="community">
-                <h2 className="text-primary mb-4" style={{fontSize: '1.8rem', fontWeight: 'bold'}}>
-                  👥 Community Globale
-                </h2>
-                <Community />
-              </section>
+                <section id="community">
+                  <h2
+                    className="text-primary mb-4"
+                    style={{ fontSize: '1.8rem', fontWeight: 'bold' }}
+                  >
+                    👥 Community Globale
+                  </h2>
+                  <Community />
+                </section>
 
-              <hr />
+                <hr />
 
-              <section id="merch">
-                <h2 className="text-primary mb-4" style={{fontSize: '1.8rem', fontWeight: 'bold'}}>
-                  🛍️ Merchandising Consigliato
-                </h2>
-                <MerchSuggestions />
-              </section>
-            </>
-          } />
+                <section id="merch">
+                  <h2
+                    className="text-primary mb-4"
+                    style={{ fontSize: '1.8rem', fontWeight: 'bold' }}
+                  >
+                    🛍️ Merchandising Consigliato
+                  </h2>
+                  <MerchSuggestions />
+                </section>
+              </>
+            }
+          />
           <Route path="/anime/:id" element={<AnimeDetail />} />
           <Route path="/community" element={<CommunityDashboard />} />
           <Route path="/community/:communityId" element={<CommunityDashboard />} />
           <Route path="/social" element={<SocialDashboard />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/2fa" element={<TwoFactorSetup />} />
+          <Route path="/profile/settings" element={<ProfileSettingsWrapper />} />
           <Route path="/test" element={<TestPage />} />
         </Routes>
       </div>

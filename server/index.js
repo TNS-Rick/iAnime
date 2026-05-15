@@ -227,6 +227,20 @@ async function startServer() {
       });
     });
 
+    // ===== GLOBAL ERROR HANDLER =====
+    app.use((error, req, res, next) => {
+      console.error('❌ Errore:', error.message || error);
+      
+      const status = error.status || error.statusCode || 500;
+      const message = error.message || 'Errore interno del server';
+      
+      res.status(status).json({
+        error: message,
+        status,
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      });
+    });
+
     // Start server
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {

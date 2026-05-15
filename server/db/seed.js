@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { connectDB, disconnectDB, getPool } = require('./connection');
 const { schemaStatements } = require('./schema');
+const { applyMigrations } = require('./migrations');
 
 const toJson = (value) => JSON.stringify(value);
 const hashPassword = (value) => bcrypt.hash(value, 10);
@@ -367,6 +368,9 @@ const initializeDatabase = async () => {
     if (!hasSchema) {
       await createSchema();
     }
+
+    // 1b. Apply lightweight migrations (idempotent)
+    await applyMigrations();
 
     // 2. Check/Seed data
     const isSeeded = await isDatabaseSeeded();

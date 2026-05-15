@@ -530,34 +530,98 @@ router.get('/v1/auth/me', authenticateToken, async (req, res) => {
 // Update profile
 router.put('/v1/auth/profile', authenticateToken, async (req, res, next) => {
   try {
-    const allowedUpdates = ['bio', 'profileImage', 'displayNameColor', 'theme', 'displayMode', 'language', 'colorblindMode', 'highContrast', 'textSize', 'audioInputDevice', 'audioOutputDevice', 'volume', 'twoFAEnabled', 'twoFAMethod', 'whoCanInvite', 'acceptStrangerMessages', 'publicKey'];
+    // Supporta sia le chiavi legacy che quelle usate dalla pagina /profile/settings.
+    const body = {
+      ...req.body,
+      ...(req.body.avatar !== undefined ? { profileImage: req.body.avatar } : {}),
+      ...(req.body.frame !== undefined ? { profileFrameStyle: req.body.frame } : {}),
+    };
+
+    const allowedUpdates = [
+      'username',
+      'bio',
+      'profileImage',
+      'profileFrameStyle',
+      'displayNameColor',
+      'theme',
+      'displayMode',
+      'language',
+      'colorblindMode',
+      'highContrast',
+      'textSize',
+      'audioInputDevice',
+      'audioOutputDevice',
+      'volume',
+      'twoFAEnabled',
+      'twoFAMethod',
+      'whoCanInvite',
+      'acceptStrangerMessages',
+      'publicKey',
+    ];
+
     const updates = {};
 
     // Validation rules for specific fields
     const validThemes = ['dark', 'light', 'auto'];
     const validDisplayModes = ['dark', 'light'];
-    const validColorblindModes = ['none', 'deuteranopia', 'protanopia', 'tritanopia'];
+    const validColorblindModes = ['normal', 'deuteranopia', 'protanopia', 'tritanopia'];
+
+    const usernamePattern = /^[a-zA-Z0-9_-]+$/;
+    const reservedUsernames = new Set(['admin', 'root', 'support', 'system', 'moderator', 'mod']);
 
     for (const field of allowedUpdates) {
-      if (req.body[field] !== undefined) {
+      if (body[field] !== undefined) {
+        if (field === 'username') {
+          const nextUsername = String(body.username || '').trim();
+
+          if (nextUsername.length < 3 || nextUsername.length > 30) {
+            return res.status(400).json({ error: 'Username deve avere tra 3 e 30 caratteri' });
+          }
+
+          if (!usernamePattern.test(nextUsername)) {
+            return res.status(400).json({ error: 'Username non valido: usa solo lettere, numeri, _ e -' });
+          }
+
+          if (reservedUsernames.has(nextUsername.toLowerCase())) {
+            return res.status(400).json({ error: 'Username non disponibile' });
+          }
+
+          const currentUser = await User.findById(req.user.id);
+          if (!currentUser) {
+            return res.status(404).json({ error: 'Utente non trovato' });
+          }
+
+          if (currentUser.username !== nextUsername) {
+            const existing = await User.findByUsername(nextUsername);
+            if (existing && existing.id !== currentUser.id) {
+              return res.status(400).json({ error: 'Username già preso' });
+            }
+
+            updates.username = nextUsername;
+            updates.lastUsernameChange = new Date();
+          }
+
+          continue;
+        }
+
         // Validate theme field
-        if (field === 'theme' && !validThemes.includes(req.body[field])) {
+        if (field === 'theme' && !validThemes.includes(body[field])) {
           return res.status(400).json({ error: 'Theme non valido. Deve essere: dark, light, o auto' });
         }
         
         // Validate displayMode field
-        if (field === 'displayMode' && !validDisplayModes.includes(req.body[field])) {
+        if (field === 'displayMode' && !validDisplayModes.includes(body[field])) {
           return res.status(400).json({ error: 'Display mode non valido. Deve essere: dark o light' });
         }
         
         // Validate colorblindMode field
-        if (field === 'colorblindMode' && !validColorblindModes.includes(req.body[field])) {
+        if (field === 'colorblindMode' && !validColorblindModes.includes(body[field])) {
           return res.status(400).json({ error: 'Modalità daltonismo non valida' });
         }
         
         // Validate textSize (should be 0.5-2.0)
         if (field === 'textSize') {
-          const size = parseFloat(req.body[field]);
+          const size = parseFloat(body[field]);
           if (isNaN(size) || size < 0.5 || size > 2.0) {
             return res.status(400).json({ error: 'Dimensione testo deve essere tra 0.5 e 2.0' });
           }
@@ -565,19 +629,49 @@ router.put('/v1/auth/profile', authenticateToken, async (req, res, next) => {
         
         // Validate volume (should be 0-100)
         if (field === 'volume') {
-          const volume = parseInt(req.body[field]);
+          const volume = parseInt(body[field]);
           if (isNaN(volume) || volume < 0 || volume > 100) {
             return res.status(400).json({ error: 'Volume deve essere tra 0 e 100' });
           }
         }
+
+        if (field === 'profileFrameStyle') {
+          const nextFrame = String(body[field] || '').trim();
+          if (!nextFrame) {
+            updates[field] = 'none';
+          } else if (nextFrame.length > 50) {
+            return res.status(400).json({ error: 'Cornice profilo non valida' });
+          } else {
+            updates[field] = nextFrame;
+          }
+          continue;
+        }
+
+        if (field === 'profileImage') {
+          const nextImage = body[field];
+          if (nextImage === null || nextImage === '') {
+            updates[field] = '';
+          } else if (typeof nextImage !== 'string') {
+            return res.status(400).json({ error: 'Immagine profilo non valida' });
+          } else if (nextImage.length > 2_000_000) {
+            // Guardrail: evita payload enormi (circa ~2MB di stringa)
+            return res.status(400).json({ error: 'Immagine profilo troppo grande' });
+          } else {
+            updates[field] = nextImage;
+          }
+          continue;
+        }
         
-        updates[field] = req.body[field];
+        updates[field] = body[field];
       }
     }
 
     const updatedUser = await User.update(req.user.id, updates);
     res.json({ user: sanitizeUser(updatedUser) });
   } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: 'Username già preso' });
+    }
     next(error);
   }
 });

@@ -27,7 +27,7 @@ export default function Settings() {
   const [friendRequestNotifications, setFriendRequestNotifications] = useState(true);
   const [systemNotifications, setSystemNotifications] = useState(true);
   const [blockedUsers, setBlockedUsers] = useState([]);
-  const [colorBlindMode, setColorBlindMode] = useState('none');
+  const [colorBlindMode, setColorBlindMode] = useState('normal');
   const [highContrast, setHighContrast] = useState(false);
   const [textSize, setTextSize] = useState(1);
   const [inputDevice, setInputDevice] = useState('default');
@@ -48,7 +48,7 @@ export default function Settings() {
       setPaymentMethod(currentUser.billingMethod || '');
       setTheme(currentUser.theme || 'dark');
       setDisplayMode(currentUser.displayMode || 'dark');
-      setColorBlindMode(currentUser.colorblindMode || 'none');
+      setColorBlindMode(currentUser.colorblindMode || 'normal');
       setHighContrast(currentUser.highContrast || false);
       setTextSize(currentUser.textSize || 1);
       setInputDevice(currentUser.audioInputDevice || 'default');
@@ -358,7 +358,7 @@ export default function Settings() {
                 >
                   <option value="all">👥 Tutti</option>
                   <option value="friends">👫 Solo Amici</option>
-                  <option value="none">🚫 Nessuno</option>
+                  <option value="normal">🚫 Nessuno</option>
                 </select>
               </div>
 
@@ -569,7 +569,7 @@ export default function Settings() {
                   value={colorBlindMode}
                   onChange={(e) => setColorBlindMode(e.target.value)}
                 >
-                  <option value="none">Nessuno</option>
+                  <option value="normal">Nessuno</option>
                   <option value="deuteranopia">Deuteranopia (Rosso-Verde)</option>
                   <option value="protanopia">Protanopia (Rosso-Verde)</option>
                   <option value="tritanopia">Tritanopia (Blu-Giallo)</option>

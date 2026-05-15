@@ -60,9 +60,34 @@ const runStatements = async (connection, statements) => {
   }
 };
 
+const runMigrations = async () => {
+  const activePool = getPool();
+  
+  // Migration: Add publicKey column to users table if it doesn't exist
+  try {
+    const [columns] = await activePool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = DATABASE() 
+       AND TABLE_NAME = 'users' 
+       AND COLUMN_NAME = 'publicKey'`
+    );
+    
+    if (!columns || columns.length === 0) {
+      console.log('🔄 Adding missing publicKey column to users table...');
+      await activePool.query(
+        `ALTER TABLE users ADD COLUMN publicKey TEXT NULL AFTER twoFASecret`
+      );
+      console.log('✅ publicKey column added successfully');
+    }
+  } catch (error) {
+    console.error('⚠️  Migration error (publicKey column):', error.message);
+  }
+};
+
 const initSchema = async () => {
   const activePool = getPool();
   await runStatements(activePool, schemaStatements);
+  await runMigrations();
 };
 
 const resetDatabase = async () => {
